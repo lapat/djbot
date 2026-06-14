@@ -75,7 +75,7 @@ def main():
 
     # Step 4: Build the mix
     print("\n[4/4] Mixing...")
-    mix = crossfade(
+    mix, _ = crossfade(
         track_a=seg_a,
         track_b=seg_b,
         bpm_a=info_a["bpm"],

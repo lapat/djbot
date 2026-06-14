@@ -75,6 +75,8 @@ def main():
     mix         = AudioSegment.empty()
     transitions = []
     current_ms  = 0
+    # library[0] defines the master tempo — all subsequent tracks are stretched to it
+    master_track = None
 
     for i, track in enumerate(library):
         seg = AudioSegment.from_file(track["path"]).set_channels(2)
@@ -82,6 +84,7 @@ def main():
         if i == 0:
             # First track: add clean, then plan crossfade for next
             mix = seg
+            master_track = track
             current_ms = len(seg)
             print(f"  [{i+1:02d}] {track['artist']} - {track['title']}  ({track['bpm']} BPM)")
         else:
@@ -89,7 +92,7 @@ def main():
             print(f"  [{i+1:02d}] {track['artist']} - {track['title']}  ({track['bpm']} BPM)")
 
             # Build the blended tail: last N bars of current mix + new track
-            seconds_per_bar   = (60.0 / prev["bpm"]) * 4
+            seconds_per_bar   = (60.0 / master_track["bpm"]) * 4
             crossfade_ms_est  = int(seconds_per_bar * args.crossfade_bars * 1000)
             outro_ms          = int(seconds_per_bar * args.outro_bars * 1000)
             crossfade_start   = max(0, len(mix) - outro_ms)
@@ -100,23 +103,26 @@ def main():
                 "crossfade_duration_ms": crossfade_ms_est,
                 "track_a": f"{prev['artist']} - {prev['title']}",
                 "track_b": f"{track['artist']} - {track['title']}",
-                "bpm_a":   prev["bpm"],
+                "bpm_a":   master_track["bpm"],
                 "bpm_b":   track["bpm"],
             })
 
             # Render the actual crossfade
-            # Keep everything before the outro, then blend
-            prev_seg  = mix            # full mix so far
-            next_seg  = seg
-
-            mix = crossfade(
-                track_a=prev_seg,
-                track_b=next_seg,
-                bpm_a=prev["bpm"],
+            # path_a = master track (sets BPM of the accumulated mix)
+            # path_b = current track (will be stretched to match)
+            mix, cf_info = crossfade(
+                track_a=mix,
+                track_b=seg,
+                bpm_a=master_track["bpm"],
                 bpm_b=track["bpm"],
                 crossfade_bars=args.crossfade_bars,
                 outro_bars=args.outro_bars,
+                path_a=master_track["path"],
+                path_b=track["path"],
             )
+            # Update transition record with actual timestamps from the render
+            transitions[-1]["crossfade_start_ms"]    = cf_info["crossfade_start_ms"]
+            transitions[-1]["crossfade_duration_ms"] = cf_info["crossfade_duration_ms"]
 
     # ── Cue sheet ──────────────────────────────────────────────────────────
     print(f"\n{'━'*60}")
