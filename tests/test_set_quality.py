@@ -234,6 +234,59 @@ class TestEqBlendUnit:
         assert USE_EQ_BLEND is True, \
             "USE_EQ_BLEND must be True in v2 branch"
 
+    def test_eq_blend_shorter_input_no_crash(self):
+        """
+        Guard against end-of-file truncation: if za or zb are shorter than n,
+        _eq_blend must NOT crash with a shape mismatch — it must silently truncate n.
+        Bug: np.linspace(0, 1, n) vs band arrays of shape (shorter, 2) → broadcast error.
+        """
+        n = self.SR * 4
+        short = self.SR * 3   # intentionally shorter than n
+        za = self._white(short)
+        zb = self._white(short)
+        out = _eq_blend(za, zb, n, self.SR)   # n > len(za), len(zb)
+        assert out.shape[0] == short, \
+            f"Expected output length {short} (min of inputs), got {out.shape[0]}"
+        assert out.shape[1] == 2
+
+    def test_measure_blend_is_not_eq_blend(self):
+        """
+        Phase measurement must use equal-power blend, not EQ blend.
+        Regression: if EQ blend is exported for beat_this, the bass sigmoid swap
+        looks like a phase discontinuity → false 60-120ms phase errors.
+        Verify by checking that set_builder.py exports measure_blend (equal-power),
+        not best["blend"] (EQ).  This is a source-level AST check.
+        """
+        import ast, pathlib
+        src = pathlib.Path(__file__).parent.parent / "mixer" / "set_builder.py"
+        tree = ast.parse(src.read_text())
+        # Find all Export calls in build_one_transition. The one for blend_path must
+        # use measure_blend, NOT best["blend"].
+        found_measure = False
+        found_best_blend = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "measure_blend":
+                        found_measure = True
+            # Look for .export() calls on a variable named measure_blend
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Attribute) and func.attr == "export":
+                    # Check if the object being exported is derived from measure_blend
+                    val = func.value
+                    if isinstance(val, ast.Call):
+                        # _f32_to_seg(measure_blend, sr) or _f32_to_seg(best["blend"], ...)
+                        if val.args and isinstance(val.args[0], ast.Name):
+                            if val.args[0].id == "measure_blend":
+                                found_measure = True
+                            if val.args[0].id == "best":
+                                found_best_blend = True
+        assert found_measure, \
+            "measure_blend variable not found in set_builder.py — phase measurement may be using EQ blend"
+        assert not found_best_blend, \
+            "best['blend'] is being passed to .export() — this sends EQ blend to beat_this (regression)"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Integration: 3-track build (KT_Sorry → Butch_Lale → Sol_Story)

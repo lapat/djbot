@@ -58,6 +58,7 @@ def _eq_blend(za, zb, n, sr):
     that beat_this CV and phase scores are clean.  This function is called only
     once, AFTER the best blend position is selected.
     """
+    n  = min(n, len(za), len(zb))   # guard against end-of-file truncation
     za = za[:n].astype(np.float32)
     zb = zb[:n].astype(np.float32)
 
@@ -69,7 +70,7 @@ def _eq_blend(za, zb, n, sr):
     ep_out = (np.cos(p * (np.pi / 2.0)) ** 2).reshape(-1, 1)   # A: 1 → 0
     ep_in  = (np.sin(p * (np.pi / 2.0)) ** 2).reshape(-1, 1)   # B: 0 → 1
 
-    w = 0.12   # sigmoid half-width ≈ 12 % of blend ≈ 3.7 s at 31 s blend ≈ 2 bars
+    w = 0.12   # logistic width — steepness 2.7× faster than equal-power at midpoint
     a_bass_g = (1.0 / (1.0 + np.exp((p - 0.5) / w))).reshape(-1, 1)
     b_bass_g = 1.0 - a_bass_g
 
@@ -318,10 +319,12 @@ def build_one_transition(track_a, track_b, out_dir, cf_bars, outro_bars):
             best["trim"]  = trim_c
 
     # ── EQ blend (v2) ────────────────────────────────────────────────────────
-    # Measurement blends above used equal-power (clean CV/phase scores).
-    # Re-derive the final blend from the selected A/B zones using per-band EQ
-    # curves.  Must happen AFTER offset selection + drift correction so we use
-    # the correct trim position.
+    # Phase measurement (below) MUST use the equal-power blend — the bass sigmoid
+    # swap creates a spectral discontinuity at p=0.5 that beat_this mistakes for a
+    # phase error (observed: 6ms true error → 61ms measured on EQ blend).
+    # So: keep equal-power for the BLEND.mp3 / phase gate; swap in EQ blend as the
+    # "blend" value that goes into the final mix assembly.
+    measure_blend = best["blend"].copy()   # always equal-power
     if USE_EQ_BLEND:
         _za = samples_a[outro_sample : outro_sample + best["n"]]
         _zb = best["b"][:best["n"]]
@@ -330,7 +333,7 @@ def build_one_transition(track_a, track_b, out_dir, cf_bars, outro_bars):
     os.makedirs(out_dir, exist_ok=True)
     tag        = f"{track_a['name']}_into_{track_b['name']}"
     blend_path = os.path.join(out_dir, f"{tag}_BLEND.mp3")
-    _f32_to_seg(best["blend"], sr).export(blend_path, format="mp3", bitrate="192k")
+    _f32_to_seg(measure_blend, sr).export(blend_path, format="mp3", bitrate="192k")
 
     return {
         "tag":          tag,
