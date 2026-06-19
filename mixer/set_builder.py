@@ -22,6 +22,65 @@ from mixer.transition import (
 
 PHASE_THRESHOLD_MS = 20.0
 
+# v2: per-band EQ crossfade (Pioneer DJM-800 style).
+# True  → bass swaps at 50 % of blend, highs+mids use equal-power.
+# False → original uniform equal-power throughout (v1 behaviour).
+USE_EQ_BLEND = True
+
+
+# ── EQ blend helpers ──────────────────────────────────────────────────────────
+
+def _band_split(audio, sr):
+    """
+    Split stereo [T,2] audio into (bass, mid, high) bands using zero-phase IIR
+    filters at 200 Hz and 5 kHz. bass + mid + high == audio exactly.
+    """
+    from scipy.signal import butter, sosfiltfilt
+    nyq = sr / 2.0
+    sos_lo = butter(4, 200.0 / nyq, btype='low',  output='sos')
+    sos_hi = butter(4, 5000.0 / nyq, btype='high', output='sos')
+    bass = sosfiltfilt(sos_lo, audio, axis=0).astype(np.float32)
+    high = sosfiltfilt(sos_hi, audio, axis=0).astype(np.float32)
+    mid  = (audio - bass - high).astype(np.float32)
+    return bass, mid, high
+
+
+def _eq_blend(za, zb, n, sr):
+    """
+    DJ-style per-band EQ crossfade.
+
+    High + Mid : standard equal-power crossfade over the full 16-bar blend.
+    Bass       : logistic (sigmoid) swap centred at 50 % of blend, ~3.7 s wide
+                 at a 31 s blend.  Avoids two sub-bass signals fighting for
+                 3–10 seconds and causing comb filtering in the 60–120 Hz range.
+
+    Measurement blends (offset search, drift correction) still use equal-power so
+    that beat_this CV and phase scores are clean.  This function is called only
+    once, AFTER the best blend position is selected.
+    """
+    za = za[:n].astype(np.float32)
+    zb = zb[:n].astype(np.float32)
+
+    a_bass, a_mid, a_high = _band_split(za, sr)
+    b_bass, b_mid, b_high = _band_split(zb, sr)
+
+    p = np.linspace(0.0, 1.0, n, dtype=np.float32)
+
+    ep_out = (np.cos(p * (np.pi / 2.0)) ** 2).reshape(-1, 1)   # A: 1 → 0
+    ep_in  = (np.sin(p * (np.pi / 2.0)) ** 2).reshape(-1, 1)   # B: 0 → 1
+
+    w = 0.12   # sigmoid half-width ≈ 12 % of blend ≈ 3.7 s at 31 s blend ≈ 2 bars
+    a_bass_g = (1.0 / (1.0 + np.exp((p - 0.5) / w))).reshape(-1, 1)
+    b_bass_g = 1.0 - a_bass_g
+
+    blend = (
+        a_bass * a_bass_g + b_bass * b_bass_g +
+        a_mid  * ep_out   + b_mid  * ep_in    +
+        a_high * ep_out   + b_high * ep_in
+    )
+    return np.clip(blend, -1.0, 1.0)
+
+
 # BPM ramp defaults — applied to every non-capped body at every body→blend boundary.
 # Set RAMP_THRESHOLD = 0.0 so the ramp fires for ALL transitions, including same-nominal-BPM
 # pairs whose beat detectors give slightly different period values. Inner guard inside
@@ -258,6 +317,16 @@ def build_one_transition(track_a, track_b, out_dir, cf_bars, outro_bars):
             best["n"]     = n_c
             best["trim"]  = trim_c
 
+    # ── EQ blend (v2) ────────────────────────────────────────────────────────
+    # Measurement blends above used equal-power (clean CV/phase scores).
+    # Re-derive the final blend from the selected A/B zones using per-band EQ
+    # curves.  Must happen AFTER offset selection + drift correction so we use
+    # the correct trim position.
+    if USE_EQ_BLEND:
+        _za = samples_a[outro_sample : outro_sample + best["n"]]
+        _zb = best["b"][:best["n"]]
+        best["blend"] = _eq_blend(_za, _zb, best["n"], sr)
+
     os.makedirs(out_dir, exist_ok=True)
     tag        = f"{track_a['name']}_into_{track_b['name']}"
     blend_path = os.path.join(out_dir, f"{tag}_BLEND.mp3")
@@ -357,8 +426,10 @@ def build_full_set(brain):
     _, sr = _seg_to_f32(AudioSegment.from_file(tracks[0]["path"]).set_channels(2))
 
     def _reblend(a_audio, b_audio, cf_len):
-        """Equal-power crossfade: a fades out, b fades in."""
+        """EQ-style crossfade for capped-body reblends (v2). Falls back to equal-power when USE_EQ_BLEND=False."""
         n = min(len(a_audio), len(b_audio), cf_len)
+        if USE_EQ_BLEND:
+            return _eq_blend(a_audio, b_audio, n, sr)
         return np.clip(
             a_audio[:n] * _equal_power(n, fade_in=False)[:, np.newaxis] +
             b_audio[:n] * _equal_power(n, fade_in=True)[:, np.newaxis],

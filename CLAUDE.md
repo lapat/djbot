@@ -232,7 +232,9 @@ python -m pytest tests/test_set_quality.py -v -m "slow" -k "Solomun"
 **test_set_quality.py covers:**
 - 10 unit tests for `_bpm_ramp`: ratio=1.0 no-op, short body guard, stable section
   unchanged, speed-up shortens output, slow-down lengthens output, energy preserved,
-  length matches average ratio, and the 3 constant values (BARS=4, CHUNKS=4, THRESHOLD=0.0)
+  length matches average ratio, and the 3 constant values (BARS=8, CHUNKS=32, THRESHOLD=0.0)
+- 7 unit tests for `_band_split` / `_eq_blend` (v2): bands sum to original, bass/high capture
+  correct frequencies, output shape, no clipping, bass swap verified by correlation, USE_EQ_BLEND=True
 - 8 integration tests for 3-track build: exit code, files exist, 2 phase errors < 20ms,
   no RMS cuts, ramp fires for Butch, ramp BPM values correct, snippets exported
 - 12 integration tests for full solomun set: all 19 phase errors, no RMS cuts, ≥6 ramps,
@@ -270,3 +272,67 @@ Before changing any assembly logic, verify your change doesn't re-introduce thes
 - **body_start_override** → made amplitude worse (5.02x) by landing at a quieter position.
 - **RAMP_THRESHOLD > 0** → misses same-nominal-BPM pairs with slight detector differences,
   leaving a rhythm stutter at those transition boundaries (user heard at 9:21).
+- **Stretching Demucs stems independently (v2 research finding):** Do NOT time-stretch
+  drums/bass/other stems separately with pyrubberband then re-sum. pyrubberband's phase vocoder
+  introduces per-frequency-bin phase rotations that differ per stem → comb filtering at 60–120 Hz
+  (exactly where kick/sub-bass overlap). The re-summed audio sounds thin and hollow. Only stretch
+  the FULL mix; then apply EQ filtering on the already-stretched blend zone.
+- **Drum-stem beat detection (v2 research finding):** Running beat_this on a Demucs drum stem does
+  NOT improve phase accuracy. beat_this was trained on full-mix audio — feeding it an isolated drum
+  stem is out-of-distribution. Our 2–8ms phase errors are already below what academic papers target.
+
+
+## v2 — EQ-style per-band crossfade (branch: v2-stem-mixing)
+
+### What it does
+
+Instead of a uniform equal-power crossfade across all frequencies, v2 applies **Pioneer DJM-800
+frequency band curves** to the blend zone. Research finding: the biggest perceptual improvement
+in DJ transitions is eliminating bass clash (two kick+sub-bass signals simultaneously producing
+comb filtering at 60–120 Hz).
+
+### Signal flow
+
+```
+Full track A → time-stretch (pyrubberband) → samples_a
+Full track B → time-stretch to A's BPM    → samples_b_s
+Select blend zone via offset search (beat CV + phase score) [equal-power for measurement]
+After offset + drift correction are locked:
+  A blend zone = samples_a[outro_sample : outro_sample + n]
+  B blend zone = samples_b_s[trim : trim + n]
+  _band_split(A zone) → (A_bass, A_mid, A_high)   [IIR zero-phase, lossless]
+  _band_split(B zone) → (B_bass, B_mid, B_high)
+  A_bass * logistic_out(p) + B_bass * logistic_in(p)   ← sigmoid swap at 50 %
+  A_mid  * equal_power_out(p) + B_mid  * equal_power_in(p)
+  A_high * equal_power_out(p) + B_high * equal_power_in(p)
+  → sum → clip to [-1, 1] → best["blend"]
+```
+
+### Key implementation facts
+
+- **Bands:** bass = 0–200 Hz (4th-order Butterworth LPF), high = 5 kHz+ (HPF), mid = A − bass − high.
+  `bass + mid + high == audio` exactly (no energy loss or overlap artifacts).
+- **Bass swap:** logistic (sigmoid) centered at 50% of blend, width w=0.12 (≈3.7 s at 31 s blend ≈2 bars).
+  Short enough to avoid prolonged comb filtering; not a hard cut, so no click.
+- **Measurement blends** (offset loop, drift correction) still use equal-power so beat_this CV/phase
+  scores are clean and unaffected by the EQ curves.
+- **`_reblend`** (used for capped bodies) also uses `_eq_blend`. Falls back to equal-power when
+  `USE_EQ_BLEND = False`.
+- **`USE_EQ_BLEND`** flag at module level — set `False` to revert to v1 equal-power for A/B comparison.
+
+### Files changed in v2
+
+- `mixer/set_builder.py` — added `_band_split`, `_eq_blend`, `USE_EQ_BLEND`; updated `_reblend`;
+  applied EQ blend after offset/drift selection, before export.
+- `mixer/stems.py` — Demucs htdemucs wrapper, cached npz. Available for future experiments but
+  NOT used in the main blend path (stretching stems independently breaks phase coherence).
+- `tests/test_set_quality.py` — 7 new unit tests: band_split sums to original, bass/high capture
+  correct frequencies, shape, no clipping, bass swap verified by correlation, USE_EQ_BLEND=True.
+
+### Perceptual improvement expected
+
+- Bass clash eliminated — one kick at a time through the blend.
+- Melody (mid/high) transitions smoothly with standard equal-power.
+- Phase accuracy unchanged (still measured and enforced at < 20ms).
+- The "starts matched then gets unmatched" complaint may be partially masked by the EQ swap —
+  phase errors above 6ms are most audible when both bass lines are simultaneously present.

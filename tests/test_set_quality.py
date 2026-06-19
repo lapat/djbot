@@ -30,7 +30,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import numpy as np
 import pytest
 
-from mixer.set_builder import _bpm_ramp, RAMP_BARS, RAMP_CHUNKS, RAMP_THRESHOLD
+from mixer.set_builder import (
+    _bpm_ramp, _band_split, _eq_blend,
+    RAMP_BARS, RAMP_CHUNKS, RAMP_THRESHOLD, USE_EQ_BLEND,
+)
 
 SR = 44100
 
@@ -143,6 +146,93 @@ class TestBpmRampUnit:
     def test_ramp_chunks_is_32(self):
         """RAMP_CHUNKS must be 32 (~0.5s each → ~0.06 BPM per step — imperceptible)."""
         assert RAMP_CHUNKS == 32, f"RAMP_CHUNKS is {RAMP_CHUNKS} — should be 32"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Unit tests: _band_split and _eq_blend
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestEqBlendUnit:
+    """Pure unit tests for the EQ blend helpers. No audio files required."""
+
+    SR = 48000
+
+    def _white(self, n, sr=None):
+        rng = np.random.default_rng(42)
+        return rng.standard_normal((n, 2)).astype(np.float32) * 0.4
+
+    def test_band_split_sums_to_original(self):
+        """bass + mid + high must equal original audio exactly (zero-phase subtraction)."""
+        n = self.SR * 5   # 5 seconds
+        audio = self._white(n)
+        bass, mid, high = _band_split(audio, self.SR)
+        reconstructed = bass + mid + high
+        np.testing.assert_allclose(reconstructed, audio, atol=1e-5,
+            err_msg="_band_split bands must sum to original audio")
+
+    def test_bass_has_low_frequency_energy(self):
+        """Bass band should have more energy below 200 Hz than above 1 kHz."""
+        n = self.SR * 2
+        # Pure 100 Hz sine
+        t = np.arange(n, dtype=np.float32) / self.SR
+        tone = (np.sin(2 * np.pi * 100 * t) * 0.5).reshape(-1, 1).repeat(2, axis=1)
+        bass, mid, high = _band_split(tone, self.SR)
+        assert np.mean(bass**2) > np.mean(mid**2), \
+            "Bass band should capture more energy of a 100Hz tone than mid band"
+
+    def test_high_has_high_frequency_energy(self):
+        """High band should capture more energy of a 10 kHz tone than bass."""
+        n = self.SR * 2
+        t = np.arange(n, dtype=np.float32) / self.SR
+        tone = (np.sin(2 * np.pi * 10000 * t) * 0.5).reshape(-1, 1).repeat(2, axis=1)
+        bass, mid, high = _band_split(tone, self.SR)
+        assert np.mean(high**2) > np.mean(bass**2), \
+            "High band should capture more energy of a 10kHz tone than bass band"
+
+    def test_eq_blend_shape(self):
+        """Output shape must match (n, 2)."""
+        n = self.SR * 4
+        za = self._white(n)
+        zb = self._white(n)
+        out = _eq_blend(za, zb, n, self.SR)
+        assert out.shape == (n, 2), f"Expected ({n}, 2), got {out.shape}"
+
+    def test_eq_blend_no_clipping(self):
+        """Output must stay within [-1, 1]."""
+        n = self.SR * 4
+        za = self._white(n) * 0.7
+        zb = self._white(n) * 0.7
+        out = _eq_blend(za, zb, n, self.SR)
+        assert out.max() <= 1.0 and out.min() >= -1.0, \
+            "EQ blend output clipped outside [-1, 1]"
+
+    def test_bass_swap_at_midpoint(self):
+        """
+        Bass band of A should dominate the first quarter; bass of B dominates the last.
+        The sigmoid swap must be centred at 50 % of blend.
+        """
+        n = self.SR * 10  # 10 s blend
+        # Pure 80 Hz for A, pure 90 Hz for B (distinct bass tones)
+        t = np.arange(n, dtype=np.float32) / self.SR
+        za = (np.sin(2 * np.pi * 80 * t) * 0.6).reshape(-1, 1).repeat(2, axis=1)
+        zb = (np.sin(2 * np.pi * 90 * t) * 0.6).reshape(-1, 1).repeat(2, axis=1)
+        out = _eq_blend(za, zb, n, self.SR)
+        q = n // 4
+        # In the first quarter, A's 80 Hz content should dominate
+        first_q = out[:q, 0]
+        last_q  = out[-q:, 0]
+        # Cross-correlate with each source tone
+        a_corr_first = float(np.abs(np.corrcoef(first_q, za[:q, 0])[0, 1]))
+        b_corr_last  = float(np.abs(np.corrcoef(last_q,  zb[-q:, 0])[0, 1]))
+        assert a_corr_first > 0.5, \
+            f"A should dominate first quarter of blend (corr={a_corr_first:.3f})"
+        assert b_corr_last  > 0.5, \
+            f"B should dominate last quarter of blend (corr={b_corr_last:.3f})"
+
+    def test_use_eq_blend_flag_is_true(self):
+        """v2 must have USE_EQ_BLEND=True — ensures EQ crossfade is active."""
+        assert USE_EQ_BLEND is True, \
+            "USE_EQ_BLEND must be True in v2 branch"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
