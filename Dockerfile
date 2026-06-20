@@ -22,7 +22,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download beat_this model into the image layer so Railway doesn't re-fetch on each run
-RUN python -c "from beat_this.inference import File2Beats; File2Beats(checkpoint='final0', device='cpu', dbn=False); print('beat_this model cached')"
+RUN python -c "from beat_this.inference import File2Beats; File2Beats(checkpoint_path='final0', device='cpu', dbn=False); print('beat_this model cached')"
 
 # App code
 COPY . .
