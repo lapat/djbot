@@ -109,6 +109,70 @@ def _build(brain_name: str) -> Path:
     return APP_DIR / "output" / brain.SET_NAME
 
 
+def _generate_cover_art(set_dir: Path, brain_module) -> Path | None:
+    """Fetch cover art from Pollinations FLUX. Returns path or None on failure."""
+    art_dir = APP_DIR / "output" / "artwork"
+    art_dir.mkdir(parents=True, exist_ok=True)
+    out = art_dir / f"{set_dir.name}_cover.jpg"
+    if out.exists():
+        return out
+
+    # Build a prompt from the first line of SET_NOTES
+    first_line = getattr(brain_module, "SET_NOTES", "").split("\n")[0].strip()
+    prompt = (
+        f"cinematic dark electronic music album art, {first_line}, "
+        "deep space, minimal, moody, high contrast, no text, photorealistic"
+    )
+    import urllib.parse
+    url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1280&height=720&nologo=true"
+    try:
+        r = requests.get(url, timeout=60)
+        if r.status_code == 200:
+            out.write_bytes(r.content)
+            print(f"  Cover art generated: {out.name}")
+            return out
+    except Exception as e:
+        print(f"  Cover art failed: {e}")
+    return None
+
+
+def _stream_to_twitch(mp3_path: Path, cover_art: Path | None):
+    """Stream mix + cover art to Twitch via FFmpeg. Blocks until stream ends."""
+    key = os.environ.get("TWITCH_STREAM_KEY")
+    if not key:
+        print("  Twitch: TWITCH_STREAM_KEY not set, skipping")
+        return
+
+    rtmp_url = f"rtmp://live.twitch.tv/app/{key}"
+
+    if cover_art and cover_art.exists():
+        video_input = ["-loop", "1", "-i", str(cover_art)]
+        video_codec = ["-vf", "scale=1280:720", "-c:v", "libx264",
+                       "-preset", "veryfast", "-b:v", "2500k",
+                       "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60"]
+    else:
+        # Black screen fallback
+        video_input = ["-f", "lavfi", "-i", "color=c=black:s=1280x720:r=30"]
+        video_codec = ["-c:v", "libx264", "-preset", "veryfast", "-b:v", "1000k", "-g", "60"]
+
+    cmd = [
+        "ffmpeg", "-re",
+        *video_input,
+        "-i", str(mp3_path),
+        *video_codec,
+        "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+        "-shortest",          # stop when audio ends
+        "-f", "flv", rtmp_url,
+    ]
+
+    print(f"  Streaming to Twitch...")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode == 0:
+        print("  Twitch stream ended cleanly ✓")
+    else:
+        print(f"  Twitch stream error: {result.stderr[-300:]}")
+
+
 def _notify_sms(message: str):
     """Send SMS via Twilio. Silently skips if env vars not set."""
     sid   = os.environ.get("TWILIO_ACCOUNT_SID")
@@ -188,6 +252,13 @@ def main():
 
     # Upload
     _upload(brain_name)
+
+    # Cover art (generate if missing)
+    cover_art = _generate_cover_art(set_dir, brain)
+
+    # Stream to Twitch (blocks for duration of mix)
+    mp3_path = set_dir / "FULL_SET.mp3"
+    _stream_to_twitch(mp3_path, cover_art)
 
     # Notify
     set_url = f"https://www.mixcloud.com/louis-lapat/{brain.SET_NAME.replace('_', '-')}/"
