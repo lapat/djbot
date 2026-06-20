@@ -14,9 +14,8 @@ pydub>=0.25.0
 pyrubberband>=0.3.0
 
 # Beat detection (CPJKU beat_this — model pre-cached in Dockerfile)
+# torch/torchaudio installed separately in Dockerfile with CPU-only index URL
 beat-this>=0.3.0
-torch>=2.0.0
-torchaudio>=2.0.0
 
 # Mixcloud upload / API
 requests>=2.31.0
