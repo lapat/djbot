@@ -117,11 +117,12 @@ def _generate_cover_art(set_dir: Path, brain_module) -> Path | None:
     if out.exists():
         return out
 
-    # Build a prompt from the first line of SET_NOTES
+    # Build a prompt — Kyoko aesthetic + mix title
     first_line = getattr(brain_module, "SET_NOTES", "").split("\n")[0].strip()
     prompt = (
-        f"cinematic dark electronic music album art, {first_line}, "
-        "deep space, minimal, moody, high contrast, no text, photorealistic"
+        "Sonoya Mizuno as Kyoko from Ex Machina, dark hair up, minimal white dress, "
+        "dancing arms extended, geometric purple-lit architectural room, "
+        f"cinematic film still, {first_line}, photorealistic, no text"
     )
     import urllib.parse
     url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1280&height=720&nologo=true"
