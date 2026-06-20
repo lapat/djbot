@@ -5,17 +5,18 @@ Style: Deep melodic house, 122-128 BPM, emotional, piano-led, Ibiza melodic.
 Influences: Yotto, Stephan Bodzin, WhoMadeWho, ARTBAT, Monolink, Ben Böhmer.
 """
 
-STYLE_NAME   = "luno"
-BPM_RANGE    = (120, 128)
-CF_BARS      = 8
-OUTRO_BARS   = 16
-SNIPPET_SEC  = 6
+STYLE_NAME    = "luno"
+BPM_RANGE     = (120, 128)
+CF_BARS       = 16
+OUTRO_BARS    = 90
+SNIPPET_SEC   = 15
+SKIP_SNIPPETS = True
 
 SET_NAME = "hours_before_light"
 
 SET_NOTES = """\
 THE HOURS BEFORE LIGHT
-A DJ set by Claude for Louis Lapat  |  DJ LUNOBOT
+DJ LUNOBOT
 
 There are hours that belong to no day — the suspended territory between 3 and 7 in the \
 morning where the city exhales and the mind becomes its own mythology. This set begins \

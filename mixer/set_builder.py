@@ -217,8 +217,11 @@ def build_one_transition(track_a, track_b, out_dir, cf_bars, outro_bars):
 
     effective_outro_bars = track_a.get("outro_bars", outro_bars)
     outro_target = len(samples_a) - effective_outro_bars * 4 * period_a
-    outro_sample = int(round(snap_to_beat(outro_target, anchor_a, period_a)))
     cf_len       = int(round(cf_bars * 4 * period_a))
+    outro_sample = int(round(snap_to_beat(outro_target, anchor_a, period_a)))
+    # Clamp: if track is shorter than outro_bars allows, start blend at the beginning.
+    # Negative outro_sample causes numpy to wrap the slice → empty za → n=0 crash.
+    outro_sample = max(0, min(outro_sample, len(samples_a) - cf_len))
 
     mix_in_samples = int(round(track_b.get("mix_in_bars", 16) * 4 * period_a))
     trim = _beat_this_phase_trim(
@@ -290,7 +293,7 @@ def build_one_transition(track_a, track_b, out_dir, cf_bars, outro_bars):
     # Corrected ratio: ratio_new = ratio * period_a / (period_a + δ).
     # Trim rescales proportionally since beat positions scale with ratio.
     PHASE_CORR_THRESHOLD_MS = 3.0
-    if best["phase_ms"] > PHASE_CORR_THRESHOLD_MS and abs(ratio - 1.0) < 0.10:
+    if best["n"] > 0 and best["phase_ms"] > PHASE_CORR_THRESHOLD_MS and abs(ratio - 1.0) < 0.10:
         err_s = best["signed_phase_ms"]
         n_beats = best["n"] / period_a
         delta   = (err_s / 1000.0) * sr * period_a / best["n"]  # samples, signed
@@ -366,9 +369,10 @@ def build_full_set(brain):
     tracks      = brain.TRACKS
     set_name    = brain.SET_NAME
     set_notes   = brain.SET_NOTES
-    cf_bars     = getattr(brain, "CF_BARS",     8)
-    outro_bars  = getattr(brain, "OUTRO_BARS",  16)
-    snippet_sec = getattr(brain, "SNIPPET_SEC", 6)
+    cf_bars       = getattr(brain, "CF_BARS",       8)
+    outro_bars    = getattr(brain, "OUTRO_BARS",    16)
+    snippet_sec   = getattr(brain, "SNIPPET_SEC",   6)
+    skip_snippets = getattr(brain, "SKIP_SNIPPETS", False)
 
     out_dir      = os.path.join("output", set_name)
     blend_dir    = os.path.join("output", "transitions", set_name)
@@ -650,14 +654,17 @@ def build_full_set(brain):
     _f32_to_seg(mix_audio, sr).export(full_path, format="mp3", bitrate="256k")
     print(f"  ✓ {full_path}")
 
-    print(f"\n  Exporting transition snippets...")
-    for clip in snippet_clips:
-        s, e = int(clip["start"]), min(int(clip["end"]), len(mix_audio))
-        fname = f"{clip['idx']:02d}_{clip['name_a']}_into_{clip['name_b']}.mp3"
-        _f32_to_seg(mix_audio[s:e], sr).export(
-            os.path.join(out_dir, fname), format="mp3", bitrate="192k"
-        )
-        print(f"  ✓ {fname}  ({(e-s)/sr:.1f}s)")
+    if skip_snippets:
+        print(f"\n  Skipping transition snippets (SKIP_SNIPPETS=True)")
+    else:
+        print(f"\n  Exporting transition snippets...")
+        for clip in snippet_clips:
+            s, e = int(clip["start"]), min(int(clip["end"]), len(mix_audio))
+            fname = f"{clip['idx']:02d}_{clip['name_a']}_into_{clip['name_b']}.mp3"
+            _f32_to_seg(mix_audio[s:e], sr).export(
+                os.path.join(out_dir, fname), format="mp3", bitrate="192k"
+            )
+            print(f"  ✓ {fname}  ({(e-s)/sr:.1f}s)")
 
     # ── Auto-generate CUE SHEET from actual blend times ──────────────────────
     def _ts(samples):

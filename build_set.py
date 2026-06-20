@@ -15,7 +15,7 @@ import sys, importlib, os
 sys.path.insert(0, os.path.dirname(__file__))
 from mixer.set_builder import build_full_set
 
-AVAILABLE = ["luno", "solomun", "test3"]
+AVAILABLE = ["luno", "solomun", "afterlife", "test3"]
 
 def main():
     if len(sys.argv) < 2 or sys.argv[1] not in AVAILABLE:

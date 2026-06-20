@@ -14,3 +14,14 @@ output/
 *.db
 *.sqlite
 .DS_Store
+
+# OAuth tokens and API credentials — never commit these
+.mixcloud_token
+.youtube_token.json
+client_secrets.json
+.mixcloud_app
+*.token
+*.token.json
+
+# Claude Code memory (private session state)
+.claude/
