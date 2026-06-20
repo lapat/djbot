@@ -59,6 +59,31 @@ SETS = {
         "title": "Pale Transmissions — Afterlife Style Mix",
         "tags":  ["melodic techno", "afterlife", "dark techno", "mix"],
     },
+    "taleous": {
+        "dir":   "output/the_endless_night",
+        "title": "The Endless Night — Afterlife Style Mix",
+        "tags":  ["melodic techno", "afterlife", "tale of us", "mix"],
+    },
+    "bodzin": {
+        "dir":   "output/herzblut_machine",
+        "title": "Herzblut Machine — Stephan Bodzin Style Mix",
+        "tags":  ["techno", "stephan bodzin", "herzblut", "analog", "mix"],
+    },
+    "bicep": {
+        "dir":   "output/isles_rising",
+        "title": "Isles Rising — Bicep Style Mix",
+        "tags":  ["melodic techno", "bicep", "belfast", "mix"],
+    },
+    "maceoplex": {
+        "dir":   "output/ellum_architecture",
+        "title": "Ellum Architecture — Maceo Plex Style Mix",
+        "tags":  ["techno", "maceo plex", "ellum", "dark techno", "mix"],
+    },
+    "benbohmer": {
+        "dir":   "output/beyond_horizons",
+        "title": "Beyond Horizons — Ben Böhmer Style Mix",
+        "tags":  ["melodic techno", "ben bohmer", "emotional", "mix"],
+    },
 }
 
 # ── OAuth ─────────────────────────────────────────────────────────────────────
@@ -84,7 +109,7 @@ class _CallbackHandler(BaseHTTPRequestHandler):
         pass  # silence request logs
 
 
-def _get_access_token(client_id, client_secret):
+def _get_access_token(client_id=None, client_secret=None):
     if TOKEN_FILE.exists():
         token = TOKEN_FILE.read_text().strip()
         # Quick check the token is still valid
@@ -200,32 +225,58 @@ def upload(set_name, access_token):
         m, s = divmod(t["start_sec"], 60)
         print(f"    {m:02d}:{s:02d}  {t['artist']} – {t['song']}")
 
-    # Build multipart fields
-    # Mixcloud caps description at 1000 chars
-    if len(description) > 1000:
-        description = description[:997] + "..."
+    # Build tracklist text in Mixcloud's paste format: "Artist – Track – HH:MM:SS"
+    tracklist_lines = []
+    for t in tracklist:
+        h, rem = divmod(t["start_sec"], 3600)
+        m, s   = divmod(rem, 60)
+        ts     = f"{h:02d}:{m:02d}:{s:02d}"
+        artist = t["artist"] or "Unknown"
+        tracklist_lines.append(f"{artist} – {t['song']} – {ts}")
+    tracklist_text = "\n".join(tracklist_lines)
+
+    # Combine narrative + tracklist; Mixcloud caps description at 1000 chars
+    combined = f"{description}\n\n{tracklist_text}"
+    if len(combined) > 1000:
+        # Trim narrative to make room for full tracklist
+        budget    = 1000 - len(tracklist_text) - 4  # 4 for "\n\n" + "..."
+        short_desc = description[:budget].rsplit(" ", 1)[0] + "..."
+        combined  = f"{short_desc}\n\n{tracklist_text}"
+    if len(combined) > 1000:
+        combined = combined[:997] + "..."
 
     data = {
         "name":        meta["title"],
-        "description": description,
+        "description": combined,
         "publish":     "1",
     }
     for i, tag in enumerate(meta["tags"]):
         data[f"tags-{i}-tag"] = tag
 
-    for i, t in enumerate(tracklist):
-        data[f"tracklist-{i}-artist"]     = t["artist"]
-        data[f"tracklist-{i}-song"]       = t["song"]
-        data[f"tracklist-{i}-start_time"] = str(t["start_sec"])
+    # Include cover art if available in output/artwork/
+    cover_candidates = [
+        Path("output/artwork") / f"{Path(meta['dir']).name}_cover.jpg",
+    ]
+    cover_path = next((p for p in cover_candidates if p.exists()), None)
 
     print(f"\n  Uploading to Mixcloud... (this takes a minute for large files)")
-    with open(mp3_path, "rb") as f:
+    if cover_path:
+        print(f"  Cover:       {cover_path}")
+
+    files = {"mp3": (mp3_path.name, open(mp3_path, "rb"), "audio/mpeg")}
+    if cover_path:
+        files["picture"] = (cover_path.name, open(cover_path, "rb"), "image/jpeg")
+
+    try:
         r = requests.post(
             f"{UPLOAD_URL}?access_token={access_token}",
             data=data,
-            files={"mp3": (mp3_path.name, f, "audio/mpeg")},
+            files=files,
             timeout=600,
         )
+    finally:
+        for fh in files.values():
+            fh[1].close()
 
     if r.status_code == 200:
         result = r.json()
@@ -249,16 +300,19 @@ def main():
 
     set_name = sys.argv[1]
 
-    client_id     = os.environ.get("MIXCLOUD_CLIENT_ID")
-    client_secret = os.environ.get("MIXCLOUD_CLIENT_SECRET")
-    if not client_id or not client_secret:
-        print("\nError: set MIXCLOUD_CLIENT_ID and MIXCLOUD_CLIENT_SECRET env vars.")
-        print("  Get them at: https://www.mixcloud.com/developers/")
-        print("  Set redirect URI to: http://localhost:8888/callback")
-        sys.exit(1)
-
     print(f"\n  Mixcloud upload — {set_name}")
-    token = _get_access_token(client_id, client_secret)
+
+    # Use saved token if available; only need env vars for first-time OAuth
+    if TOKEN_FILE.exists():
+        token = _get_access_token()
+    else:
+        client_id     = os.environ.get("MIXCLOUD_CLIENT_ID")
+        client_secret = os.environ.get("MIXCLOUD_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            print("\nError: no saved token and MIXCLOUD_CLIENT_ID/SECRET not set.")
+            print("  Run once interactively to save a token, or set the env vars.")
+            sys.exit(1)
+        token = _get_access_token(client_id, client_secret)
     upload(set_name, token)
 
 

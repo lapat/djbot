@@ -5,16 +5,21 @@ yt-dlp>=2024.1.0
 librosa>=0.10.0
 numpy>=1.24.0
 soundfile>=0.12.0
+scipy>=1.11.0
 
 # Audio manipulation
 pydub>=0.25.0
 
-# Time stretching (requires: brew install rubberband)
+# Time stretching (requires: apt-get install rubberband-cli librubberband-dev)
 pyrubberband>=0.3.0
 
-# Key / harmonic detection (heavier install — optional for Phase 0)
-# essentia  # pip install essentia  (or essentia-tensorflow on Mac)
+# Beat detection (CPJKU beat_this — model pre-cached in Dockerfile)
+beat-this>=0.3.0
+torch>=2.0.0
+torchaudio>=2.0.0
 
-# Track identification (Phase 1)
-# shazamio>=0.4.0
-# pyacoustid>=1.3.0
+# Mixcloud upload / API
+requests>=2.31.0
+
+# Source separation (v2 EQ blend — optional but installed for completeness)
+# demucs>=4.0.0
