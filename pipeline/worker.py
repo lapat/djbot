@@ -24,6 +24,8 @@ import sys
 import time
 from pathlib import Path
 
+import requests
+
 from pipeline.quality_gate import check as quality_check
 from pipeline.style_selector import current_brain
 
@@ -107,6 +109,27 @@ def _build(brain_name: str) -> Path:
     return APP_DIR / "output" / brain.SET_NAME
 
 
+def _notify_sms(message: str):
+    """Send SMS via Twilio. Silently skips if env vars not set."""
+    sid   = os.environ.get("TWILIO_ACCOUNT_SID")
+    token = os.environ.get("TWILIO_AUTH_TOKEN")
+    frm   = os.environ.get("TWILIO_FROM")
+    to    = os.environ.get("TWILIO_TO")
+    if not all([sid, token, frm, to]):
+        print("  SMS: env vars not set, skipping")
+        return
+    r = requests.post(
+        f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
+        auth=(sid, token),
+        data={"From": frm, "To": to, "Body": message},
+        timeout=15,
+    )
+    if r.status_code == 201:
+        print(f"  SMS sent ✓")
+    else:
+        print(f"  SMS failed: {r.status_code} {r.text[:100]}")
+
+
 def _upload(brain_name: str):
     """Run mixcloud_upload.py."""
     print(f"\n  Uploading: {brain_name}")
@@ -165,6 +188,10 @@ def main():
 
     # Upload
     _upload(brain_name)
+
+    # Notify
+    set_url = f"https://www.mixcloud.com/louis-lapat/{brain.SET_NAME.replace('_', '-')}/"
+    _notify_sms(f"djKyoko — new mix is live 🎧\n{brain.SET_NAME.replace('_', ' ').title()}\n{set_url}")
 
     print("\n" + "═" * 60)
     print("  djKyoko Pipeline COMPLETE")

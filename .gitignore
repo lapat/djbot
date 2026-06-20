@@ -15,13 +15,21 @@ output/
 *.sqlite
 .DS_Store
 
-# OAuth tokens and API credentials — never commit these
+# OAuth tokens and API credentials — NEVER commit these
 .mixcloud_token
 .youtube_token.json
 client_secrets.json
 .mixcloud_app
 *.token
 *.token.json
+.env
+.env.*
+secrets.py
+secrets.json
+credentials.json
+
+# Railway local config (project IDs)
+.railway/
 
 # Claude Code memory (private session state)
 .claude/

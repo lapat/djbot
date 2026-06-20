@@ -1,5 +1,21 @@
 # DJ Bot — Project Rules for Claude
 
+## HARD RULE: Never commit credentials to git
+
+All secrets live in Railway environment variables or `~/.zshrc` only. **Never put any of the following in code, comments, or any tracked file:**
+
+- Mixcloud client ID / secret / access token
+- Twilio Account SID / Auth Token / phone numbers
+- Railway API key or project tokens
+- Any API key, password, or bearer token
+
+If a future feature needs a new credential, add it as a Railway env var via:
+```
+RAILWAY_API_KEY=... railway variables set KEY=value --project dependable-nature --service djbot --environment production
+```
+
+The `.gitignore` blocks `.env`, `secrets.py`, `credentials.json`, and all `*.token` files. Do not bypass it.
+
 ## NON-NEGOTIABLE: Never corrupt the audio timeline
 **These are the hardest rules. No feature, no technique, no "improvement" overrides them.**
 
