@@ -47,7 +47,7 @@ TRACKS = [
     {
         "name":        "TheCave",
         "label":       "Patrice Baumel - The Cave (Extended Mix)",
-        "path":        "downloads/new_tracks/u16cYytR6xE.mp3",
+        "path":        "downloads/new_tracks/4pBZrnn-nW8.mp3",
         "hint":        124.0,
         "mix_in_bars": 32,
     },
