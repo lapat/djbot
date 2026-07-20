@@ -81,24 +81,46 @@ def _download_missing_tracks(brain_module):
 
     print(f"  Downloading {len(missing)} missing tracks...")
     failed = []
-    for t in missing:
+    for i, t in enumerate(missing):
         path = Path(t["path"])
         video_id = path.stem
         path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"    yt-dlp {video_id} → {path.name}")
-        result = subprocess.run([
-            "yt-dlp",
-            f"https://www.youtube.com/watch?v={video_id}",
-            "-x", "--audio-format", "mp3", "--audio-quality", "0",
-            "--match-filter", "duration > 300",
-            "-o", str(path.with_suffix("")) + ".%(ext)s",
-            "--no-playlist",
-        ], capture_output=True, text=True)
-        if result.returncode != 0 or not path.exists():
-            print(f"    FAIL (dropping this track): {video_id} — {t['label']}\n{result.stderr[-500:]}")
+
+        if i > 0:
+            # Space requests out — a burst of back-to-back downloads from
+            # one IP is exactly the pattern YouTube's bot detection flags.
+            time.sleep(8)
+
+        ok = False
+        for attempt in range(2):
+            suffix = " (retry after cool-down)" if attempt else ""
+            print(f"    yt-dlp {video_id} → {path.name}{suffix}")
+            result = subprocess.run([
+                "yt-dlp",
+                f"https://www.youtube.com/watch?v={video_id}",
+                "-x", "--audio-format", "mp3", "--audio-quality", "0",
+                "--match-filter", "duration > 300",
+                "-o", str(path.with_suffix("")) + ".%(ext)s",
+                "--no-playlist",
+            ], capture_output=True, text=True)
+            if result.returncode == 0 and path.exists():
+                ok = True
+                break
+            is_bot_block = "not a bot" in result.stderr
+            print(f"    FAIL: {video_id}\n{result.stderr[-500:]}")
+            if is_bot_block and attempt == 0:
+                # This specific error tends to be transient rate-limiting,
+                # not a permanent block — one retry after a longer pause
+                # is worth it before giving up on the track.
+                time.sleep(20)
+                continue
+            break
+
+        if ok:
+            print(f"    ✓ {path.name} ({path.stat().st_size / 1e6:.1f} MB)")
+        else:
+            print(f"    Dropping track: {video_id} — {t['label']}")
             failed.append(t)
-            continue
-        print(f"    ✓ {path.name} ({path.stat().st_size / 1e6:.1f} MB)")
     return failed
 
 
