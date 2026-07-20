@@ -5,4 +5,7 @@ dockerfilePath = "Dockerfile"
 [deploy]
 startCommand = "python -m pipeline.worker"
 restartPolicyType = "never"
-cronSchedule = "0 2 * * MON"
+# Cron schedule disabled 2026-07-20 — YouTube download reliability on
+# Railway's IPs never got fully solved (see pipeline/worker.py history);
+# considering running this locally instead. Re-add
+# `cronSchedule = "0 2 * * MON"` here to turn weekly builds back on.
