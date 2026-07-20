@@ -65,16 +65,22 @@ def _setup_mixcloud_token():
 
 
 def _download_missing_tracks(brain_module):
-    """Download any tracks from the brain that aren't on disk yet."""
+    """Download any tracks from the brain that aren't on disk yet.
+
+    Returns the list of tracks that failed to download (e.g. a video was
+    taken down) instead of raising — a single dead YouTube link must never
+    crash the whole weekly pipeline. Callers should drop these from the
+    tracklist and continue with what's left."""
     missing = [
         t for t in brain_module.TRACKS
         if not Path(t["path"]).exists()
     ]
     if not missing:
         print(f"  All {len(brain_module.TRACKS)} tracks present")
-        return
+        return []
 
     print(f"  Downloading {len(missing)} missing tracks...")
+    failed = []
     for t in missing:
         path = Path(t["path"])
         video_id = path.stem
@@ -89,9 +95,35 @@ def _download_missing_tracks(brain_module):
             "--no-playlist",
         ], capture_output=True, text=True)
         if result.returncode != 0 or not path.exists():
-            print(f"    FAIL: {video_id}\n{result.stderr[-500:]}")
-            raise RuntimeError(f"Failed to download {video_id} ({t['label']})")
+            print(f"    FAIL (dropping this track): {video_id} — {t['label']}\n{result.stderr[-500:]}")
+            failed.append(t)
+            continue
         print(f"    ✓ {path.name} ({path.stat().st_size / 1e6:.1f} MB)")
+    return failed
+
+
+def _write_filtered_brain(brain_module, original_name: str, dropped_tracks: list) -> str:
+    """Write a temp brain file with the dropped tracks removed, so the
+    subprocess-based build (_build -> build_set.py) sees a clean tracklist
+    — build_set.py re-imports the brain from disk, so filtering TRACKS
+    in-memory here wouldn't otherwise reach it."""
+    dropped_paths = {t["path"] for t in dropped_tracks}
+    kept_tracks = [t for t in brain_module.TRACKS if t["path"] not in dropped_paths]
+
+    temp_name = f"_auto_{original_name}"
+    temp_path = APP_DIR / "brains" / f"{temp_name}.py"
+    temp_path.write_text(
+        f"STYLE_NAME = {brain_module.STYLE_NAME!r}\n"
+        f"BPM_RANGE = {brain_module.BPM_RANGE!r}\n"
+        f"CF_BARS = {brain_module.CF_BARS!r}\n"
+        f"OUTRO_BARS = {brain_module.OUTRO_BARS!r}\n"
+        f"SNIPPET_SEC = {getattr(brain_module, 'SNIPPET_SEC', 15)!r}\n"
+        f"SKIP_SNIPPETS = {getattr(brain_module, 'SKIP_SNIPPETS', False)!r}\n"
+        f"SET_NAME = {brain_module.SET_NAME!r}\n"
+        f"SET_NOTES = {brain_module.SET_NOTES!r}\n"
+        f"TRACKS = {kept_tracks!r}\n"
+    )
+    return temp_name
 
 
 def _build(brain_name: str) -> Path:
@@ -229,8 +261,19 @@ def main():
     sys.path.insert(0, str(APP_DIR))
     brain = importlib.import_module(f"brains.{brain_name}")
 
-    # Download missing tracks
-    _download_missing_tracks(brain)
+    # Download missing tracks — a dead YouTube link must never crash the
+    # whole weekly run, so failed tracks get dropped instead of raising.
+    failed_tracks = _download_missing_tracks(brain)
+    if failed_tracks:
+        remaining = len(brain.TRACKS) - len(failed_tracks)
+        if remaining < 2:
+            print(f"\n  ✗ Only {remaining} track(s) left after dropping unavailable ones — can't build a set. Aborting.")
+            sys.exit(1)
+        print(f"\n  ⚠ Dropping {len(failed_tracks)} unavailable track(s), building with the remaining {remaining}:")
+        for t in failed_tracks:
+            print(f"    - {t['label']}")
+        brain_name = _write_filtered_brain(brain, brain_name, failed_tracks)
+        brain = importlib.import_module(f"brains.{brain_name}")
 
     # Build
     t0 = time.time()
