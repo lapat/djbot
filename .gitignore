@@ -19,6 +19,7 @@ output/
 .mixcloud_token
 .youtube_token.json
 client_secrets.json
+client_secret_*.json
 .mixcloud_app
 *.token
 *.token.json
@@ -27,6 +28,19 @@ client_secrets.json
 secrets.py
 secrets.json
 credentials.json
+.shared_key
+
+# Distribution build artifacts — regenerated via mac_app/build_signed_app.sh
+# and the equivalent Windows zip step; not source, don't belong in git.
+For Friend — DJ Kyoko*/
+mac_app/*.zip
+windows_app/*.zip
+
+# Local build/upload run logs — not source.
+logs/
+
+# Louis's own reference photos — personal, not project source.
+lou photos/
 
 # Railway local config (project IDs)
 .railway/

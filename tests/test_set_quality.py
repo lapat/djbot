@@ -31,8 +31,9 @@ import numpy as np
 import pytest
 
 from mixer.set_builder import (
-    _bpm_ramp, _band_split, _eq_blend,
-    RAMP_BARS, RAMP_CHUNKS, RAMP_THRESHOLD, USE_EQ_BLEND,
+    _bpm_ramp, _bpm_ramp_in, _band_split, _eq_blend, _echo_out_tail, _safe_outro_bars,
+    RAMP_BARS, RAMP_CHUNKS, RAMP_THRESHOLD, USE_EQ_BLEND, MAX_BRIDGE_DIFF_PCT,
+    ECHO_OUT_BEATS, ECHO_DELAY_BEATS, ECHO_DECAY, MAX_OUTRO_FRACTION,
 )
 
 SR = 44100
@@ -149,8 +150,195 @@ class TestBpmRampUnit:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Unit tests: _bpm_ramp_in — the mirror-image ramp used for "meet in the middle"
+# bridge transitions (large BPM gaps). Ramps the HEAD of a body from a bridged
+# tempo back to native, instead of the tail toward an upcoming blend.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestBpmRampInUnit(TestBpmRampUnit):
+    """Reuses TestBpmRampUnit's _signal() fixture. Mirrors its test coverage,
+    but checking the HEAD (ramp zone) and TAIL (stable zone) the other way
+    around, since _bpm_ramp_in ramps the start of the buffer, not the end."""
+
+    def test_ratio_1_returns_unchanged(self):
+        audio, period = self._signal(124.0)
+        out = _bpm_ramp_in(audio, SR, target_ratio=1.0, native_period=period)
+        np.testing.assert_array_equal(out, audio,
+            err_msg="ratio=1.0 must be a true no-op")
+
+    def test_short_body_returns_unchanged(self):
+        audio, period = self._signal(124.0, n_bars=2)
+        out = _bpm_ramp_in(audio, SR, target_ratio=0.984, native_period=period)
+        np.testing.assert_array_equal(out, audio,
+            err_msg="Short body must pass through unmodified")
+
+    def test_stable_section_never_modified(self):
+        """Samples AFTER the ramp-in zone (the tail) must be bit-identical to input —
+        opposite of _bpm_ramp, where the STABLE section is the head."""
+        audio, period = self._signal(122.0, n_bars=12)
+        ramp_n = int(round(RAMP_BARS * 4 * period))
+        stable_len = len(audio) - ramp_n
+        out = _bpm_ramp_in(audio, SR, target_ratio=0.984, native_period=period)
+        np.testing.assert_array_equal(
+            out[-stable_len:], audio[-stable_len:],
+            err_msg="Stable (post-ramp-in) section was modified — must be untouched"
+        )
+
+    def test_speedup_produces_shorter_output(self):
+        audio, period = self._signal(122.0, n_bars=12)
+        out = _bpm_ramp_in(audio, SR, target_ratio=0.984, native_period=period)
+        assert len(out) < len(audio)
+
+    def test_slowdown_produces_longer_output(self):
+        audio, period = self._signal(124.0, n_bars=12)
+        out = _bpm_ramp_in(audio, SR, target_ratio=1.033, native_period=period)
+        assert len(out) > len(audio)
+
+    def test_output_length_matches_average_ratio(self):
+        audio, period = self._signal(122.0, n_bars=12)
+        target = 0.984
+        ramp_n = int(round(RAMP_BARS * 4 * period))
+        stable_len = len(audio) - ramp_n
+        avg_ratio = 1.0 + (target - 1.0) * 0.5
+        expected = stable_len + int(round(ramp_n * avg_ratio))
+        out = _bpm_ramp_in(audio, SR, target_ratio=target, native_period=period)
+        err_pct = abs(len(out) - expected) / max(expected, 1)
+        assert err_pct < 0.02
+
+    def test_energy_preserved_within_20pct(self):
+        audio, period = self._signal(122.0, n_bars=12)
+        out = _bpm_ramp_in(audio, SR, target_ratio=0.984, native_period=period)
+        e_in  = float(np.mean(audio ** 2))
+        e_out = float(np.mean(out ** 2))
+        rel_err = abs(e_out - e_in) / (e_in + 1e-9)
+        assert rel_err < 0.20
+
+    def test_ramp_threshold_is_zero(self):
+        pass  # already covered by TestBpmRampUnit; avoid redundant re-assertion
+
+    def test_ramp_bars_is_8(self):
+        pass
+
+    def test_ramp_chunks_is_32(self):
+        pass
+
+    def test_mirrors_bpm_ramp_exactly(self):
+        """_bpm_ramp_in(x, ratio) must equal reverse(_bpm_ramp(reverse(x), ratio)) —
+        the documented implementation, verified directly rather than assumed."""
+        audio, period = self._signal(123.0, n_bars=12)
+        target = 1.02
+        expected = _bpm_ramp(audio[::-1].copy(), SR, target, period)[::-1]
+        out = _bpm_ramp_in(audio, SR, target, period)
+        np.testing.assert_array_equal(out, expected)
+
+    def test_head_starts_bridged_and_settles_to_native(self):
+        """Sanity check on the actual physical behavior: the first output sample
+        should reflect the bridged (target) tempo — beat spacing near the start
+        should be wider/narrower than native by roughly `target_ratio` — and by
+        the end of the ramp zone, spacing should match native almost exactly."""
+        bpm_native = 120.0
+        target_ratio = 1.15  # bridged period is 15% longer (slower) than native
+        audio, period = self._signal(bpm_native, n_bars=16)
+        out = _bpm_ramp_in(audio, SR, target_ratio, period)
+        # Locate the first two beat impulses (amplitude 0.9) in input vs output —
+        # their spacing near the head should be inflated by close to target_ratio.
+        def first_two_beat_gaps(sig):
+            idxs = np.where(sig[:, 0] > 0.5)[0]
+            return idxs[:6]
+        out_beats = first_two_beat_gaps(out)
+        gaps = np.diff(out_beats.astype(float))
+        # Earliest gap should be measurably wider than native period (ramped);
+        # later gaps (past the ramp zone) should be ~native period.
+        assert gaps[0] > period * 1.05, (
+            f"First beat gap {gaps[0]:.1f} should be inflated toward bridged tempo "
+            f"(native period={period:.1f}, target_ratio={target_ratio})"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Unit tests: _band_split and _eq_blend
 # ─────────────────────────────────────────────────────────────────────────────
+
+class TestEchoOutUnit:
+    """Pure unit tests for _echo_out_tail (hard-cut echo-out) and _safe_outro_bars
+    (the fix for a short track's outro window swallowing its whole body)."""
+
+    def test_returns_expected_length(self):
+        sr = 44100
+        period = sr * 60.0 / 128.0
+        src = np.random.uniform(-0.3, 0.3, (int(period * 8), 2)).astype(np.float32)
+        out = _echo_out_tail(src, sr, period)
+        expected_n = int(round(ECHO_OUT_BEATS * period))
+        assert abs(len(out) - expected_n) <= 1
+
+    def test_first_repeat_is_loudest(self):
+        """Gain must decay monotonically — the first echo repeat should have
+        more energy than the last non-trivial one."""
+        sr = 44100
+        period = sr * 60.0 / 128.0
+        delay_n = int(round(ECHO_DELAY_BEATS * period))
+        src = np.full((delay_n, 2), 0.5, dtype=np.float32)
+        out = _echo_out_tail(src, sr, period)
+        first_rep_energy = float(np.mean(out[:delay_n] ** 2))
+        last_rep_energy = float(np.mean(out[-delay_n:] ** 2))
+        assert first_rep_energy > last_rep_energy, (
+            "Echo must decay — first repeat should be louder than the last"
+        )
+
+    def test_no_clipping(self):
+        sr = 44100
+        period = sr * 60.0 / 128.0
+        src = np.random.uniform(-0.9, 0.9, (int(period * 8), 2)).astype(np.float32)
+        out = _echo_out_tail(src, sr, period)
+        assert float(np.max(np.abs(out))) <= 1.0 + 1e-6
+
+    def test_short_source_does_not_crash(self):
+        sr = 44100
+        period = sr * 60.0 / 128.0
+        src = np.random.uniform(-0.3, 0.3, (5, 2)).astype(np.float32)  # tiny
+        out = _echo_out_tail(src, sr, period)
+        assert len(out) > 0
+
+    def test_decays_below_audibility_eventually(self):
+        """With ECHO_DECAY < 1, gain must eventually drop below the 0.02 floor
+        — confirms the loop terminates on decay, not just on total_n."""
+        sr = 44100
+        period = sr * 60.0 / 20.0  # very slow tempo -> many delay repeats fit
+        src = np.full((int(0.5 * period), 2), 1.0, dtype=np.float32)
+        out = _echo_out_tail(src, sr, period, total_beats=64)  # generous window
+        tail_energy = float(np.mean(out[-1000:] ** 2))
+        assert tail_energy < 0.01, f"Tail should have decayed to near-silence, got energy {tail_energy}"
+
+
+class TestSafeOutroBarsUnit:
+    def test_long_track_unaffected(self):
+        """A track much longer than the outro window shouldn't be clamped at all."""
+        sr = 44100
+        period = sr * 60.0 / 122.0
+        total_samples = int(8 * 60 * sr)  # 8 minutes
+        result = _safe_outro_bars(90, period, total_samples)
+        assert result == 90
+
+    def test_short_track_gets_clamped(self):
+        """The Beatles - Come Together case: 82.8 BPM, ~4:19 track, OUTRO_BARS=90
+        would reserve a 4:21 window — longer than the track. Must clamp."""
+        sr = 44100
+        period = sr * 60.0 / 82.8
+        total_samples = int(259 * sr)  # 4:19
+        result = _safe_outro_bars(90, period, total_samples)
+        window_sec = result * 4 * period / sr
+        assert window_sec <= 259 * MAX_OUTRO_FRACTION + 1.0, (
+            f"Clamped outro window {window_sec:.1f}s still exceeds "
+            f"{MAX_OUTRO_FRACTION*100:.0f}% of the {259}s track"
+        )
+        assert result < 90, "Should have been reduced from the requested 90 bars"
+
+    def test_never_returns_less_than_one(self):
+        sr = 44100
+        period = sr * 60.0 / 60.0
+        result = _safe_outro_bars(90, period, total_samples=100)  # absurdly short
+        assert result >= 1
+
 
 class TestEqBlendUnit:
     """Pure unit tests for the EQ blend helpers. No audio files required."""

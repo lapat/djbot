@@ -592,6 +592,36 @@ Preload was removed entirely. Do not re-add any preload unless the start positio
 to NOT overlap with the blend's A-side start.
 
 
+## HARD RULE: Beat-matching correctness is the top priority — above avoiding hard-cuts (decided 2026-08-19)
+
+**If the beats don't actually match, nothing else about a transition matters.** A
+blend where the incoming and outgoing tracks' beats are audibly overlapping/
+clashing is worse than no blend at all — Louis's own words: "if you don't match
+the beats NOTHING matters, might as well just do the song ends with echo and
+cut to other song." When there is real doubt about whether two tracks' beats
+will actually lock (not just "does the numeric phase-error check pass"), the
+hard-cut + echo-out fallback (see `_build_hard_cut_transition`/`_echo_out_tail`
+in set_builder.py) is the CORRECT, PREFERRED choice, not a fallback to be
+avoided. Never let "let's try to force a beat-matched blend anyway" win over
+"this will clearly land better as a clean hard cut."
+
+**The existing phase-error number is not proof the beats actually match — it
+has a real, confirmed false-positive mode.** Case in point (2026-08-19): a
+Corona → Real McCoy transition measured phase error 0.1ms (an excellent score,
+comfortably under the 20ms gate) and passed the RMS-continuity check too — yet
+Louis reported hearing "multiple beats overlapping" when actually listening to
+it. A single-point phase-error regression over the blend window can land on a
+coincidental alignment while the underlying detected tempo relationship
+between the two tracks is still wrong (a classic way this happens: an
+undetected octave/double-time mismatch — see the existing `_octave_match()`
+correction — where the phase regression can still find *a* low-residual fit
+even though the felt beat pattern is doubled or halved relative to the other
+track). **Do not treat "phase error < 20ms" as equivalent to "the beats will
+sound matched."** Passing the numeric gate is necessary but demonstrably not
+sufficient — when in doubt, or when a user reports a transition sounds
+off despite passing the gate, investigate for an octave/tempo-ratio mismatch
+specifically, not just re-check the phase-error number again.
+
 ## Non-negotiable quality gate
 **Every transition MUST pass both checks before presenting to the user:**
 

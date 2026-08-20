@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DJ Kyoko</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text y=%2224%22 font-size=%2226%22>🎧</text></svg>">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a12;
+    --bg-grid: #0d0d16;
+    --surface: #14141f;
+    --surface-2: #1c1c2c;
+    --surface-hover: #21213380;
+    --border: #2a2a3d;
+    --border-soft: #202030;
+    --text: #f1f1f7;
+    --text-muted: #8d8da3;
+    --text-faint: #55556b;
+    --accent: #ff3f8f;
+    --accent-dim: #ff3f8f33;
+    --accent-2: #7b5cff;
+    --accent-2-dim: #7b5cff2e;
+    --good: #34d399;
+    --good-dim: #34d39922;
+    --warn: #fbbf24;
+    --warn-dim: #fbbf2422;
+    --bad: #f87171;
+    --bad-dim: #f8717122;
+    --info: #38bdf8;
+    --info-dim: #38bdf822;
+    --radius: 18px;
+    --radius-sm: 11px;
+    --font-display: 'Unbounded', system-ui, sans-serif;
+    --font-body: 'Manrope', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 600px at 12% -8%, #24123a55, transparent 60%),
+      radial-gradient(900px 500px at 95% 8%, #0d2a3a4d, transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100%;
+  }
+  ::selection { background: var(--accent-dim); color: var(--text); }
+  a { color: inherit; }
+  button { font-family: inherit; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  /* ── top bar ─────────────────────────────────────────────────────── */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    backdrop-filter: blur(16px) saturate(140%);
+    background: #0a0a12cc;
+    border-bottom: 1px solid var(--border-soft);
+    padding: 20px 28px 18px;
+  }
+  .topbar-inner { max-width: 1180px; margin: 0 auto; }
+  .brand-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+    background: conic-gradient(from 220deg, var(--accent), var(--accent-2), var(--accent));
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display); font-weight: 700; font-size: 15px; color: #0a0a12;
+    box-shadow: 0 0 24px -4px var(--accent-dim);
+  }
+  h1.title {
+    font-family: var(--font-display); font-weight: 700; font-size: 21px;
+    letter-spacing: -0.01em; margin: 0;
+  }
+  .tagline { color: var(--text-muted); font-size: 13.5px; margin-top: 2px; }
+  .icon-btn {
+    width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-muted); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all .15s ease;
+  }
+  .icon-btn:hover { color: var(--text); border-color: #3a3a52; background: var(--surface-2); }
+  .surprise-btn {
+    all: unset; display: flex; align-items: center; gap: 7px; flex-shrink: 0; cursor: pointer;
+    height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text-muted); font-size: 13px; font-weight: 600;
+    transition: all .15s ease; box-sizing: border-box;
+  }
+  .surprise-btn:hover { color: var(--text); border-color: var(--accent-2); background: var(--accent-2-dim); }
+  .surprise-btn .die { font-size: 15px; }
+
+  .composer {
+    display: flex; gap: 10px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 8px 8px 8px 20px; align-items: center;
+    transition: border-color .18s ease, box-shadow .18s ease;
+  }
+  .composer:focus-within { border-color: #46466b; box-shadow: 0 0 0 3px var(--accent-2-dim); }
+  .composer input[type=text] {
+    flex: 1; background: none; border: none; outline: none; color: var(--text);
+    font-family: var(--font-body); font-size: 15.5px; font-weight: 500; padding: 10px 0;
+    min-width: 120px;
+  }
+  .composer input[type=text]::placeholder { color: var(--text-faint); font-weight: 500; }
+  .minutes-field {
+    display: flex; align-items: center; gap: 6px; color: var(--text-muted);
+    font-size: 13px; padding: 0 10px; border-left: 1px solid var(--border-soft); flex-shrink: 0;
+  }
+  .minutes-field input {
+    width: 44px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px;
+    color: var(--text); font-family: var(--font-mono); font-size: 13px; text-align: center;
+    padding: 5px 2px; outline: none;
+  }
+  .minutes-field input:focus { border-color: var(--accent-2); }
+  .btn-build {
+    flex-shrink: 0; border: none; cursor: pointer; border-radius: 12px;
+    padding: 12px 22px; font-weight: 700; font-size: 14.5px; font-family: var(--font-body);
+    background: linear-gradient(135deg, var(--accent), #ff6fae);
+    color: #1a0510; letter-spacing: 0.01em;
+    box-shadow: 0 8px 22px -8px var(--accent-dim);
+    transition: transform .12s ease, box-shadow .12s ease, opacity .12s ease;
+  }
+  .btn-build:hover { transform: translateY(-1px); box-shadow: 0 10px 26px -8px #ff3f8f66; }
+  .btn-build:active { transform: translateY(0); }
+  .btn-build:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* ── main ─────────────────────────────────────────────────────────── */
+  main { max-width: 1180px; margin: 0 auto; padding: 30px 28px 90px; }
+  .empty-state {
+    text-align: center; padding: 90px 20px 60px; color: var(--text-muted);
+  }
+  .empty-state .glyph { font-size: 42px; margin-bottom: 14px; filter: saturate(1.3); }
+  .empty-state h2 { font-family: var(--font-display); font-size: 19px; color: var(--text); margin: 0 0 8px; font-weight: 600; }
+  .empty-state p { font-size: 14px; max-width: 40ch; margin: 0 auto; line-height: 1.6; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(390px, 1fr)); gap: 18px; }
+
+  /* ── job card ─────────────────────────────────────────────────────── */
+  .card {
+    background: linear-gradient(175deg, var(--surface), #12121c);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 20px 18px; display: flex; flex-direction: column; gap: 14px;
+    animation: cardIn .35s cubic-bezier(.2,.8,.2,1) both;
+    position: relative; overflow: hidden;
+  }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+  .card::before {
+    content: ''; position: absolute; inset: 0 0 auto 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--card-glow, var(--border)), transparent);
+    opacity: .8;
+  }
+  .card.active { --card-glow: var(--accent-2); }
+  .card.done { --card-glow: var(--good); }
+  .card.error { --card-glow: var(--bad); }
+
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .card-title {
+    font-family: var(--font-display); font-weight: 600; font-size: 16.5px; line-height: 1.35;
+    letter-spacing: -0.01em; word-break: break-word;
+  }
+  .card-meta { color: var(--text-faint); font-size: 12px; margin-top: 4px; font-family: var(--font-mono); }
+  .badge {
+    display: inline-block; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-muted); vertical-align: middle;
+  }
+
+  .pill {
+    flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 5px 10px 5px 8px; border-radius: 20px; white-space: nowrap;
+  }
+  .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.queued { background: var(--surface-2); color: var(--text-muted); }
+  .pill.curating, .pill.downloading { background: var(--info-dim); color: var(--info); }
+  .pill.mixing, .pill.exporting { background: var(--accent-2-dim); color: #a996ff; }
+  .pill.done { background: var(--good-dim); color: var(--good); }
+  .pill.error { background: var(--bad-dim); color: var(--bad); }
+  .pill.pulse .dot { animation: pulseDot 1.4s ease-in-out infinite; }
+  @keyframes pulseDot { 0%,100% { opacity: 1; transform: scale(1);} 50% { opacity: .4; transform: scale(1.6);} }
+
+  .progress-row { display: flex; align-items: center; gap: 12px; }
+  .progress-track {
+    flex: 1; height: 8px; border-radius: 8px; background: var(--surface-2);
+    overflow: hidden; position: relative; border: 1px solid var(--border-soft);
+  }
+  .progress-fill {
+    height: 100%; border-radius: 8px;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent));
+    transition: width .5s cubic-bezier(.3,.7,.2,1);
+    position: relative; overflow: hidden;
+  }
+  .progress-fill.shimmer::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(100deg, transparent 30%, #ffffff55 50%, transparent 70%);
+    background-size: 200% 100%; animation: shimmer 1.6s linear infinite;
+  }
+  @keyframes shimmer { from { background-position: 160% 0; } to { background-position: -60% 0; } }
+  .progress-fill.done-fill { background: linear-gradient(90deg, #1fae7a, var(--good)); }
+  .progress-fill.error-fill { background: linear-gradient(90deg, #c04747, var(--bad)); }
+  .progress-nums {
+    font-family: var(--font-mono); font-size: 12.5px; color: var(--text-muted);
+    display: flex; gap: 8px; flex-shrink: 0; font-variant-numeric: tabular-nums;
+  }
+  .progress-nums .pct { color: var(--text); font-weight: 500; }
+
+  .stage-label { font-size: 13px; color: var(--text-muted); margin-top: -6px; }
+
+  /* track list */
+  .tracks { display: flex; flex-direction: column; gap: 7px; }
+  .track-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+  .track-num { font-family: var(--font-mono); color: var(--text-faint); width: 26px; flex-shrink: 0; }
+  .track-label { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .track-bpm { font-family: var(--font-mono); color: var(--text-faint); font-size: 11px; flex-shrink: 0; }
+  .track-status { width: 60px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+  .mini-bar { width: 44px; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  .mini-bar > div { height: 100%; background: var(--info); transition: width .4s ease; }
+  .check { color: var(--good); font-size: 13px; }
+  .xmark { color: var(--bad); font-size: 13px; }
+  .track-pct { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint); width: 30px; text-align: right; }
+
+  /* the actual creative narrative — always visible, plain text, no disclosure */
+  .narrative-block {
+    background: linear-gradient(155deg, var(--accent-2-dim), transparent 70%);
+    border: 1px solid var(--border-soft); border-radius: var(--radius-sm);
+    padding: 14px 16px;
+  }
+  .narrative-text {
+    margin: 0; font-size: 13.5px; line-height: 1.65; color: #e4e4f2;
+    font-style: italic;
+  }
+  .narrative-images { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; }
+  .narrative-images img {
+    height: 130px; width: auto; border-radius: 10px; border: 1px solid var(--border);
+    object-fit: cover; flex-shrink: 0; background: var(--surface-2);
+  }
+
+  /* story log */
+  details.story { border-top: 1px solid var(--border-soft); padding-top: 10px; }
+  details.story summary {
+    cursor: pointer; font-size: 12px; color: var(--text-muted); list-style: none;
+    display: flex; align-items: center; gap: 6px; user-select: none;
+  }
+  details.story summary::-webkit-details-marker { display: none; }
+  details.story summary .chev { transition: transform .18s ease; font-size: 10px; }
+  details.story[open] summary .chev { transform: rotate(90deg); }
+  .log-box {
+    margin-top: 10px; background: #08080e; border: 1px solid var(--border-soft); border-radius: var(--radius-sm);
+    max-height: 180px; overflow-y: auto; padding: 10px 12px; font-family: var(--font-mono); font-size: 11.5px;
+    line-height: 1.7; color: #b3b3c8;
+  }
+  .log-box::-webkit-scrollbar { width: 7px; }
+  .log-box::-webkit-scrollbar-thumb { background: #2a2a3d; border-radius: 8px; }
+  .log-line { display: flex; gap: 8px; animation: logIn .25s ease both; }
+  @keyframes logIn { from { opacity: 0; transform: translateX(-3px);} to { opacity:1; transform:none; } }
+  .log-t { color: var(--text-faint); flex-shrink: 0; }
+
+  /* footer actions */
+  .card-footer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  .player {
+    display: flex; align-items: center; gap: 10px; flex: 1; min-width: 220px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px 6px 6px;
+  }
+  .play-btn {
+    all: unset; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 30px; height: 30px; border-radius: 50%; background: var(--text); color: var(--surface);
+    cursor: pointer; font-size: 12px;
+  }
+  .play-btn:hover { background: var(--accent); color: #fff; }
+  .player .time-cur, .player .time-dur { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+  .seek-track {
+    flex: 1; height: 14px; display: flex; align-items: center; cursor: pointer; touch-action: none;
+  }
+  .seek-track-bg { position: relative; width: 100%; height: 4px; border-radius: 4px; background: var(--border); overflow: visible; }
+  .seek-fill { position: absolute; top: 0; left: 0; height: 100%; width: 0%; border-radius: 4px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+  .seek-thumb {
+    position: absolute; top: 50%; left: 0%; width: 11px; height: 11px; border-radius: 50%; background: #fff;
+    transform: translate(-50%, -50%); box-shadow: 0 1px 4px rgba(0,0,0,.5); opacity: 0; transition: opacity .12s ease;
+  }
+  .player:hover .seek-thumb, .player.dragging .seek-thumb { opacity: 1; }
+  .player audio { display: none; }
+  .seek-markers { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  .seek-marker {
+    position: absolute; top: 50%; width: 2px; height: 10px; border-radius: 1px;
+    background: var(--text-faint, rgba(255,255,255,.45)); transform: translate(-1px, -50%);
+  }
+  .tab-row { display: flex; gap: 4px; padding: 10px 0 0; }
+  .tab-btn {
+    all: unset; cursor: pointer; padding: 8px 16px; border-radius: 8px 8px 0 0; font-size: 13px;
+    font-weight: 700; color: var(--text-muted); border-bottom: 2px solid transparent;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .community-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 0 4px; gap: 10px; flex-wrap: wrap; }
+  .share-public-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted); text-decoration: none; }
+  .share-public-link:hover { color: var(--text); }
+  .sort-toggle { display: flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 3px; }
+  .sort-btn { all: unset; cursor: pointer; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+  .sort-btn.active { background: var(--surface); color: var(--text); }
+
+  .creator-row { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+  .creator-tag { font-size: 12px; color: var(--text-muted); }
+  .creator-tag b { color: var(--text); }
+  .stats-row { display: flex; align-items: center; gap: 14px; }
+  .like-btn { all: unset; cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-muted); }
+  .like-btn.liked { color: var(--accent); }
+  .listen-count { font-size: 12px; color: var(--text-faint); }
+
+  .btn-sm {
+    display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--text); border-radius: 9px; padding: 8px 13px;
+    font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s ease; text-decoration: none;
+  }
+  .btn-sm:hover { border-color: #3a3a52; background: #23233a; }
+  .btn-sm.primary { background: var(--accent-dim); border-color: #ff3f8f55; color: #ff8fbb; }
+  .btn-sm.primary:hover { background: #ff3f8f33; }
+
+  .share-wrap { position: relative; display: inline-block; }
+  .share-menu {
+    display: none; flex-direction: column; gap: 2px; position: absolute; bottom: calc(100% + 8px); left: 0;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 6px;
+    min-width: 170px; box-shadow: 0 12px 32px rgba(0,0,0,.5); z-index: 30;
+  }
+  .share-menu.open { display: flex; }
+  .share-item {
+    all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 9px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer;
+  }
+  .share-item:hover { background: var(--surface-hover); }
+
+  .error-banner {
+    background: var(--bad-dim); border: 1px solid #f8717144; border-radius: var(--radius-sm);
+    padding: 12px 14px; font-size: 13px; color: #ffb3b3; line-height: 1.5;
+  }
+
+  /* ── settings modal ──────────────────────────────────────────────── */
+  .overlay {
+    position: fixed; inset: 0; background: #05050ad0; backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+    animation: fadeIn .2s ease both;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 22px;
+    max-width: 460px; width: 100%; padding: 30px 28px 26px;
+    animation: modalIn .28s cubic-bezier(.2,.8,.2,1) both;
+  }
+  @keyframes modalIn { from { opacity:0; transform: translateY(14px) scale(.97);} to {opacity:1; transform:none;} }
+  .modal h2 { font-family: var(--font-display); font-size: 19px; margin: 0 0 8px; font-weight: 600; }
+  .modal p.sub { color: var(--text-muted); font-size: 13.5px; line-height: 1.6; margin: 0 0 22px; }
+  .key-option {
+    border: 1.5px solid var(--border); border-radius: 14px; padding: 16px 16px; margin-bottom: 10px;
+    cursor: pointer; transition: all .15s ease;
+  }
+  .key-option:hover { border-color: #3a3a52; background: var(--surface-2); }
+  .key-option.selected { border-color: var(--accent-2); background: var(--accent-2-dim); }
+  .key-option .opt-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .key-option .opt-desc { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+  .modal input[type=password], .modal input[type=text] {
+    width: 100%; margin-top: 10px; background: #08080e; border: 1px solid var(--border);
+    border-radius: 9px; padding: 10px 12px; color: var(--text); font-family: var(--font-mono);
+    font-size: 12.5px; outline: none;
+  }
+  .modal input:focus { border-color: var(--accent-2); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+  .btn-ghost {
+    background: none; border: 1px solid var(--border); color: var(--text-muted); border-radius: 10px;
+    padding: 9px 16px; font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    padding: 11px 18px; border-radius: 12px; font-size: 13px; z-index: 200;
+    box-shadow: 0 12px 30px -8px #000000aa; animation: toastIn .25s ease both;
+  }
+  @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand-row">
+      <div class="brand">
+        <div class="brand-mark">DJ</div>
+        <div>
+          <h1 class="title">DJ Kyoko</h1>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span id="buildTag" style="font-family:var(--font-mono); font-size:11px; color:var(--text-faint);"></span>
+        <button class="icon-btn" id="usernameBtn" title="Your name" style="width:auto; padding:0 12px; font-size:12px; font-weight:600;">👤 Set name</button>
+        <button class="icon-btn" id="settingsBtn" title="Settings">⚙</button>
+      </div>
+    </div>
+    <div class="tab-row">
+      <button class="tab-btn active" id="tabMine" data-tab="mine">My Mixes</button>
+      <button class="tab-btn" id="tabCommunity" data-tab="community">🌐 Community</button>
+    </div>
+    <form class="composer" id="composer">
+      <input type="text" id="requestInput" placeholder='e.g. "solomun meets madonna", "90s hip hop", "deep house sunset"' autocomplete="off" />
+      <div class="minutes-field">
+        <input type="number" id="minutesInput" value="10" min="6" max="90" />
+        <span>min</span>
+      </div>
+      <button type="button" class="surprise-btn" id="surpriseBtn" title="Fills in a random idea — reroll as many times as you want">
+        <span class="die">🎲</span> Surprise me
+      </button>
+      <button type="submit" class="btn-build" id="buildBtn">Build mix</button>
+    </form>
+  </div>
+</div>
+
+<main>
+  <div id="mineView">
+    <div id="emptyState" class="empty-state">
+      <div class="glyph">🎧</div>
+      <h2>No mixes yet</h2>
+      <p>Type what you want above and hit Build — you can queue up several at once, they build in parallel.</p>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+  <div id="communityView" style="display:none;">
+    <div class="community-toolbar">
+      <a class="share-public-link" id="sharePublicLink" href="#">🔗 Copy public link to share</a>
+      <div class="sort-toggle">
+        <button class="sort-btn active" data-sort="recent">Recent</button>
+        <button class="sort-btn" data-sort="popular">Most liked</button>
+      </div>
+    </div>
+    <div id="communityEmptyState" class="empty-state" style="display:none;">
+      <div class="glyph">🌐</div>
+      <h2>Nothing published yet</h2>
+      <p>Finish a mix in "My Mixes" — it's shared here automatically.</p>
+    </div>
+    <div class="grid" id="communityGrid"></div>
+  </div>
+</main>
+
+<div id="modalRoot"></div>
+
+<script>
+const grid = document.getElementById('grid');
+const emptyState = document.getElementById('emptyState');
+const cardEls = new Map();     // job_id -> card element
+const streams = new Map();     // job_id -> EventSource
+
+const STAGE_TEXT = {
+  queued: 'Queued',
+  starting: 'Starting',
+  curating: 'Curating',
+  downloading: 'Downloading',
+  mixing: 'Beat-matching',
+  exporting: 'Finalizing',
+  done: 'Done',
+  error: 'Error',
+};
+
+function fmtEta(sec) {
+  if (sec == null) return '';
+  sec = Math.max(0, Math.round(sec));
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m > 0 ? `~${m}m ${s}s left` : `~${s}s left`;
+}
+function fmtTime(t) {
+  const d = new Date(t * 1000);
+  return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+function esc(s) {
+  return (s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function trackRow(t) {
+  let statusHtml;
+  if (t.download_status === 'done') statusHtml = `<span class="check">✓</span>`;
+  else if (t.download_status === 'error') statusHtml = `<span class="xmark">✗</span>`;
+  else if (t.download_status === 'downloading') {
+    statusHtml = `<div class="mini-bar"><div style="width:${t.download_pct||0}%"></div></div><span class="track-pct">${Math.round(t.download_pct||0)}%</span>`;
+  } else {
+    statusHtml = `<span style="color:var(--text-faint);font-size:11px;">·</span>`;
+  }
+  return `<div class="track-row">
+    <span class="track-num">${esc(t.name)}</span>
+    <span class="track-label" title="${esc(t.label)}">${esc(t.label)}</span>
+    <span class="track-bpm">${t.bpm ? Math.round(t.bpm)+' BPM' : ''}</span>
+    <span class="track-status">${statusHtml}</span>
+  </div>`;
+}
+
+function renderCard(job) {
+  const status = job.status;
+  const isActive = !['done', 'error', 'queued'].includes(status);
+  const cardClass = status === 'done' ? 'done' : status === 'error' ? 'error' : (isActive ? 'active' : '');
+  const pillClass = status;
+  const pulse = isActive ? 'pulse' : '';
+  const fillClass = status === 'done' ? 'done-fill' : status === 'error' ? 'error-fill' : (isActive ? 'shimmer' : '');
+
+  let tracksHtml = '';
+  if (job.tracks && job.tracks.length) {
+    tracksHtml = `<div class="tracks">${job.tracks.map(trackRow).join('')}</div>`;
+  }
+
+  let footerHtml = '';
+  if (status === 'done') {
+    footerHtml = `<div class="card-footer">
+      <div class="player" data-player-id="${job.id}" data-markers="${esc((job.transition_markers_sec || []).join(','))}">
+        <button class="play-btn" data-action="toggle-play" data-id="${job.id}">▶</button>
+        <span class="time-cur">0:00</span>
+        <div class="seek-track" data-id="${job.id}">
+          <div class="seek-track-bg"><div class="seek-fill"></div><div class="seek-markers"></div><div class="seek-thumb"></div></div>
+        </div>
+        <span class="time-dur">0:00</span>
+        <audio data-audio-id="${job.id}" preload="metadata" src="/api/jobs/${job.id}/audio"></audio>
+      </div>
+      <button class="btn-sm" data-action="reveal" data-id="${job.id}">📁 Show file</button>
+      <a class="btn-sm" href="/api/jobs/${job.id}/tracks-zip" download>📦 Tracks + cue</a>
+      <div class="share-wrap">
+        <button class="btn-sm" data-action="share-menu" data-id="${job.id}">📤 Share</button>
+        <div class="share-menu" data-menu-id="${job.id}">
+          <button class="share-item" data-action="share-imessage" data-id="${job.id}">💬 Messages</button>
+          <button class="share-item" data-action="share-email" data-id="${job.id}">✉️ Mail</button>
+        </div>
+      </div>
+      ${job.published === true ? `<span class="btn-sm" style="opacity:.75">🌐 Published</span>`
+        : job.published === false ? `<span class="btn-sm" style="opacity:.6" title="Couldn't reach the gallery — the mix is still saved locally">🌐 Publish failed</span>`
+        : `<span class="btn-sm" style="opacity:.6">🌐 Publishing…</span>`}
+    </div>`;
+  } else if (status === 'error') {
+    const canRetryOwnKey = job.error_type === 'billing_cap';
+    footerHtml = `<div class="error-banner">${esc(job.error || 'Unknown error')}</div>
+      <div class="card-footer">
+        ${canRetryOwnKey ? `<button class="btn-sm primary" data-action="own-key-retry" data-id="${job.id}">Use my own key</button>` : `<button class="btn-sm" data-action="retry" data-id="${job.id}">Retry</button>`}
+      </div>`;
+  }
+
+  const progressPct = Math.max(job.percent || 0, status === 'queued' ? 0 : 2);
+  let logHtml = '';
+  if (job.log && job.log.length) {
+    logHtml = job.log.slice(-120).map(l => `<div class="log-line"><span class="log-t">${fmtTime(l.t)}</span><span>${esc(l.msg)}</span></div>`).join('');
+  }
+
+  const displayTitle = job.mix_name || job.request;
+  const showOriginalRequest = job.mix_name && job.mix_name !== job.request;
+
+  let storyHtml = '';
+  if (job.narrative || job.story_image_url || job.dj_image_url) {
+    const images = [job.story_image_url, job.dj_image_url].filter(Boolean);
+    storyHtml = `<div class="narrative-block">
+      ${job.narrative ? `<p class="narrative-text">${esc(job.narrative)}</p>` : ''}
+      ${images.length ? `<div class="narrative-images">${images.map(u => `<img src="${esc(u)}" alt="AI-generated image for this mix">`).join('')}</div>` : ''}
+    </div>`;
+  }
+
+  return `
+    <div class="card-head">
+      <div>
+        <div class="card-title">${esc(displayTitle)}</div>
+        <div class="card-meta">${job.restored_from_history ? '<span class="badge" style="margin-right:6px;">History</span>' : ''}${showOriginalRequest ? `"${esc(job.request)}" · ` : ''}~${job.minutes}min · ${new Date(job.created_at*1000).toLocaleDateString([], {month:'short',day:'numeric'})} ${new Date(job.created_at*1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="pill ${pillClass} ${pulse}"><span class="dot"></span>${STAGE_TEXT[status] || status}</span>
+        ${status !== 'done' && status !== 'error'
+          ? `<button class="icon-btn" data-action="delete" data-id="${job.id}" title="Cancel this build" style="width:28px;height:28px;font-size:13px;">⏹</button>`
+          : `<button class="icon-btn" data-action="delete" data-id="${job.id}" title="Remove from list" style="width:28px;height:28px;font-size:13px;">✕</button>`}
+      </div>
+    </div>
+
+    ${storyHtml}
+
+    ${status !== 'done' ? `<div class="stage-label">${esc(job.stage_label || '')}</div>` : ''}
+
+    <div class="progress-row">
+      <div class="progress-track"><div class="progress-fill ${fillClass}" style="width:${progressPct}%"></div></div>
+      <div class="progress-nums"><span class="pct">${Math.round(job.percent||0)}%</span></div>
+    </div>
+
+    ${tracksHtml}
+    ${footerHtml}
+
+    <details class="story">
+      <summary><span class="chev">▸</span> Details / log ${job.log ? `(${job.log.length})` : ''}</summary>
+      <div class="log-box" id="log-${job.id}">${logHtml}</div>
+    </details>
+  `;
+}
+
+function fmtClock(sec) {
+  if (sec == null || !isFinite(sec) || sec < 0) return '0:00';
+  sec = Math.floor(sec);
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function wireAudioPlayers(container) {
+  container.querySelectorAll('.player').forEach(player => {
+    if (player.dataset.wired) return;
+    player.dataset.wired = '1';
+    const audio = player.querySelector('audio');
+    const playBtn = player.querySelector('.play-btn');
+    const track = player.querySelector('.seek-track');
+    const fill = player.querySelector('.seek-fill');
+    const thumb = player.querySelector('.seek-thumb');
+    const curEl = player.querySelector('.time-cur');
+    const durEl = player.querySelector('.time-dur');
+    const markersEl = player.querySelector('.seek-markers');
+    const markerSecs = (player.dataset.markers || '').split(',').map(Number).filter(n => !isNaN(n) && n > 0);
+
+    const updateFromTime = (t) => {
+      curEl.textContent = fmtClock(t);
+      const dur = audio.duration;
+      if (isFinite(dur) && dur > 0) {
+        const pct = Math.min(100, Math.max(0, (t / dur) * 100));
+        fill.style.width = pct + '%';
+        thumb.style.left = pct + '%';
+      }
+    };
+
+    audio.addEventListener('loadedmetadata', () => {
+      durEl.textContent = fmtClock(audio.duration);
+      updateFromTime(audio.currentTime);
+      const dur = audio.duration;
+      if (isFinite(dur) && dur > 0 && markersEl && !markersEl.dataset.rendered) {
+        markersEl.dataset.rendered = '1';
+        markersEl.innerHTML = markerSecs.filter(s => s < dur).map(s =>
+          `<div class="seek-marker" style="left:${(s / dur * 100).toFixed(2)}%" title="Transition at ${fmtClock(s)}"></div>`
+        ).join('');
+      }
+    });
+    audio.addEventListener('timeupdate', () => {
+      if (!player.classList.contains('dragging')) updateFromTime(audio.currentTime);
+    });
+    audio.addEventListener('play', () => { playBtn.textContent = '⏸'; });
+    audio.addEventListener('pause', () => { playBtn.textContent = '▶'; });
+    audio.addEventListener('ended', () => { playBtn.textContent = '▶'; });
+
+    const seekToClientX = (clientX) => {
+      const rect = track.getBoundingClientRect();
+      const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      const dur = audio.duration;
+      if (isFinite(dur) && dur > 0) {
+        audio.currentTime = ratio * dur;
+        updateFromTime(audio.currentTime);
+      }
+    };
+
+    track.addEventListener('pointerdown', (e) => {
+      player.classList.add('dragging');
+      track.setPointerCapture(e.pointerId);
+      seekToClientX(e.clientX);
+      const onMove = (ev) => seekToClientX(ev.clientX);
+      const onUp = () => {
+        player.classList.remove('dragging');
+        track.removeEventListener('pointermove', onMove);
+        track.removeEventListener('pointerup', onUp);
+        track.removeEventListener('pointercancel', onUp);
+      };
+      track.addEventListener('pointermove', onMove);
+      track.addEventListener('pointerup', onUp);
+      track.addEventListener('pointercancel', onUp);
+    });
+  });
+}
+
+function upsertCard(job) {
+  let el = cardEls.get(job.id);
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'card';
+    el.dataset.id = job.id;
+    grid.prepend(el);
+    cardEls.set(job.id, el);
+    emptyState.style.display = 'none';
+  }
+  const wasOpen = el.querySelector('details.story')?.open;
+  const logBox = el.querySelector('.log-box');
+  const wasScrolledBottom = logBox ? (logBox.scrollTop + logBox.clientHeight >= logBox.scrollHeight - 8) : true;
+
+  el.className = 'card ' + (job.status === 'done' ? 'done' : job.status === 'error' ? 'error' : (!['done','error','queued'].includes(job.status) ? 'active' : ''));
+  el.innerHTML = renderCard(job);
+
+  const details = el.querySelector('details.story');
+  if (wasOpen) details.open = true;
+  const newLogBox = el.querySelector('.log-box');
+  if (newLogBox && wasScrolledBottom) newLogBox.scrollTop = newLogBox.scrollHeight;
+  wireAudioPlayers(el);
+}
+
+function watchJob(id) {
+  if (streams.has(id)) return;
+  const es = new EventSource(`/api/jobs/${id}/stream`);
+  es.onmessage = (ev) => {
+    const job = JSON.parse(ev.data);
+    upsertCard(job);
+    if (job.status === 'done' || job.status === 'error') {
+      es.close();
+      streams.delete(id);
+    }
+  };
+  es.onerror = () => { es.close(); streams.delete(id); };
+  streams.set(id, es);
+}
+
+function closeAllShareMenus() {
+  document.querySelectorAll('.share-menu.open').forEach(m => m.classList.remove('open'));
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.share-wrap')) closeAllShareMenus();
+});
+
+async function loadJobs() {
+  const res = await fetch('/api/jobs');
+  const jobs = await res.json();
+  jobs.sort((a,b) => a.created_at - b.created_at);
+  for (const job of jobs) {
+    upsertCard(job);
+    if (!['done', 'error'].includes(job.status)) watchJob(job.id);
+  }
+}
+
+grid.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const { action, id } = btn.dataset;
+  if (action === 'toggle-play') {
+    const audio = grid.querySelector(`audio[data-audio-id="${id}"]`);
+    if (audio) { if (audio.paused) audio.play(); else audio.pause(); }
+    return;
+  } else if (action === 'share-menu') {
+    const menu = grid.querySelector(`.share-menu[data-menu-id="${id}"]`);
+    const wasOpen = menu.classList.contains('open');
+    closeAllShareMenus();
+    if (!wasOpen) menu.classList.add('open');
+    return;
+  } else if (action === 'reveal') {
+    await fetch(`/api/jobs/${id}/reveal`);
+  } else if (action === 'retry') {
+    const job = JSON.parse(JSON.stringify(await (await fetch(`/api/jobs/${id}`)).json()));
+    const res = await fetch('/api/jobs', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ request: job.request, minutes: job.minutes }),
+    });
+    const { id: newId } = await res.json();
+    await refreshOne(newId);
+    watchJob(newId);
+  } else if (action === 'own-key-retry') {
+    openSettingsModal({ retryJobId: id });
+  } else if (action === 'delete') {
+    const isCancel = btn.title === 'Cancel this build';
+    if (isCancel && !confirm('Cancel this build in progress? This stops it for good — there\'s no undo.')) {
+      return;
+    }
+    const stream = streams.get(id);
+    if (stream) { stream.close(); streams.delete(id); }
+    await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
+    const el = cardEls.get(id);
+    if (el) { el.remove(); cardEls.delete(id); }
+    if (grid.children.length === 0) emptyState.style.display = 'block';
+  } else if (action === 'share-imessage' || action === 'share-email') {
+    closeAllShareMenus();
+    const isEmail = action === 'share-email';
+    const recipient = prompt(isEmail ? 'Send to which email address?' : 'Send to which phone number or Apple ID (iMessage)?');
+    if (!recipient || !recipient.trim()) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/jobs/${id}/share/${isEmail ? 'email' : 'imessage'}`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ recipient: recipient.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.detail || 'Share failed');
+      } else {
+        showToast(isEmail ? 'Email draft opened in Mail' : 'Sent via iMessage');
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+});
+
+async function refreshOne(id) {
+  const job = await (await fetch(`/api/jobs/${id}`)).json();
+  upsertCard(job);
+}
+
+// ── new mix submission ──────────────────────────────────────────────
+document.getElementById('composer').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('requestInput');
+  const minutesInput = document.getElementById('minutesInput');
+  const request = input.value.trim();
+  if (!request) return;
+  const buildBtn = document.getElementById('buildBtn');
+  buildBtn.disabled = true;
+  try {
+    const res = await fetch('/api/jobs', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ request, minutes: Number(minutesInput.value) || 10 }),
+    });
+    if (res.status === 400) {
+      const err = await res.json();
+      if ((err.detail || '').includes('API key')) { openSettingsModal(); return; }
+      showToast(err.detail || 'Something went wrong');
+      return;
+    }
+    const { id } = await res.json();
+    input.value = '';
+    await refreshOne(id);
+    watchJob(id);
+  } finally {
+    buildBtn.disabled = false;
+  }
+});
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3200);
+}
+
+// ── settings modal ──────────────────────────────────────────────────
+async function openSettingsModal(opts = {}) {
+  const root = document.getElementById('modalRoot');
+  let selected = 'shared';
+  root.innerHTML = `
+    <div class="overlay" id="modalOverlay">
+      <div class="modal">
+        <h2>API key setup</h2>
+        <p class="sub">DJ Kyoko needs an Anthropic API key to curate tracks. Louis shares a key capped at $25/month total across everyone using this app — if it runs out, switch to your own.</p>
+        <div class="key-option selected" data-val="shared">
+          <div class="opt-title">Use the shared key</div>
+          <div class="opt-desc">Works immediately, no setup. Shared budget across everyone using this app.</div>
+        </div>
+        <div class="key-option" data-val="own">
+          <div class="opt-title">Use my own key</div>
+          <div class="opt-desc">Get a free key at console.anthropic.com → API Keys.</div>
+          <input type="password" id="ownKeyInput" placeholder="sk-ant-..." style="display:none" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="modalCancel">Cancel</button>
+          <button class="btn-build" id="modalSave" style="padding:10px 18px;">Save</button>
+        </div>
+      </div>
+    </div>`;
+  const options = root.querySelectorAll('.key-option');
+  options.forEach(opt => opt.addEventListener('click', () => {
+    options.forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    selected = opt.dataset.val;
+    document.getElementById('ownKeyInput').style.display = selected === 'own' ? 'block' : 'none';
+  }));
+  document.getElementById('modalCancel').onclick = () => root.innerHTML = '';
+  document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay' && !opts.forced) root.innerHTML = ''; });
+  document.getElementById('modalSave').onclick = async () => {
+    const ownKey = document.getElementById('ownKeyInput').value.trim();
+    if (selected === 'own' && !ownKey) { showToast('Paste your API key first'); return; }
+    if (opts.retryJobId) {
+      const res = await fetch(`/api/jobs/${opts.retryJobId}/retry-with-own-key`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ key_source: 'own', own_key: ownKey }),
+      });
+      const { id } = await res.json();
+      await refreshOne(id);
+      watchJob(id);
+    } else {
+      await fetch('/api/config', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ key_source: selected, own_key: selected === 'own' ? ownKey : null }),
+      });
+    }
+    root.innerHTML = '';
+  };
+}
+document.getElementById('settingsBtn').addEventListener('click', () => openSettingsModal());
+
+// Fallback only — used if the AI-generated /api/surprise call fails (e.g. no
+// network, no API key yet). The AI is the primary source so repeats stay rare
+// even across many clicks, unlike picking from a small fixed list forever.
+const SURPRISE_FALLBACK_PROMPTS = [
+  'solomun meets madonna', '90s eurodance bangers', 'deep house sunset',
+  'contemporary classical meets underground hip hop', 'italo disco after midnight',
+  'afrobeat meets deep house', 'lo-fi meets trip hop', 'gothic post-punk meets techno',
+];
+document.getElementById('surpriseBtn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '…';
+  let pick;
+  try {
+    const res = await fetch('/api/surprise');
+    if (!res.ok) throw new Error('surprise request failed');
+    const data = await res.json();
+    pick = data.prompt;
+  } catch {
+    pick = SURPRISE_FALLBACK_PROMPTS[Math.floor(Math.random() * SURPRISE_FALLBACK_PROMPTS.length)];
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+  document.getElementById('requestInput').value = pick;
+  document.getElementById('composer').requestSubmit();
+});
+
+// ── gallery (shared mixes with friends) ─────────────────────────────────
+let GALLERY_URL = null;
+let MY_USERNAME = null;
+const communityGrid = document.getElementById('communityGrid');
+const communityEmptyState = document.getElementById('communityEmptyState');
+
+function getLikerId() {
+  let id = localStorage.getItem('djbot_liker_id');
+  if (!id) {
+    id = 'liker-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem('djbot_liker_id', id);
+  }
+  return id;
+}
+
+function updateUsernameBtn() {
+  const btn = document.getElementById('usernameBtn');
+  btn.textContent = MY_USERNAME ? `👤 ${MY_USERNAME}` : '👤 Set name';
+}
+
+function openUsernameModal(onSaved) {
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="modalOverlay">
+      <div class="modal">
+        <h2>Your name</h2>
+        <p class="sub">Shown on mixes you publish to the Community tab so your friends know who made them.</p>
+        <input type="text" id="usernameInput" placeholder="e.g. Louis" value="${esc(MY_USERNAME || '')}"
+               style="width:100%; box-sizing:border-box; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:10px 12px; color:var(--text); font-size:14px; margin-top:4px;" />
+        <div class="modal-actions">
+          <button class="btn-ghost" id="modalCancel">Cancel</button>
+          <button class="btn-build" id="modalSave" style="padding:10px 18px;">Save</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('modalCancel').onclick = () => root.innerHTML = '';
+  document.getElementById('modalOverlay').addEventListener('click', (e) => { if (e.target.id === 'modalOverlay') root.innerHTML = ''; });
+  document.getElementById('usernameInput').focus();
+  document.getElementById('modalSave').onclick = async () => {
+    const name = document.getElementById('usernameInput').value.trim();
+    if (!name) { showToast('Enter a name first'); return; }
+    const res = await fetch('/api/config/username', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username: name }),
+    });
+    if (!res.ok) { const err = await res.json().catch(()=>({})); showToast(err.detail || 'Could not save name'); return; }
+    MY_USERNAME = name;
+    updateUsernameBtn();
+    root.innerHTML = '';
+    if (onSaved) onSaved();
+  };
+}
+document.getElementById('usernameBtn').addEventListener('click', () => openUsernameModal());
+
+function fmtGalleryClock(sec) {
+  if (!sec || !isFinite(sec)) return '';
+  sec = Math.floor(sec);
+  return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+}
+
+function renderCommunityCard(mix) {
+  // story_image_url/dj_image_url are relative paths off the GALLERY's own
+  // origin (e.g. "/api/gallery/{id}/image/story") — resolve them against
+  // GALLERY_URL explicitly, since rendered here they'd otherwise resolve
+  // against the local app's own origin instead and 404.
+  const images = [mix.story_image_url, mix.dj_image_url]
+    .filter(Boolean)
+    .map(u => u.startsWith('http') ? u : `${GALLERY_URL}${u}`);
+  const audioUrl = `${GALLERY_URL}/api/gallery/${mix.id}/audio`;
+  return `
+    <div class="card-head">
+      <div>
+        <div class="card-title">${esc(mix.title)}</div>
+        <div class="card-meta">${mix.request ? `"${esc(mix.request)}" · ` : ''}${fmtGalleryClock(mix.duration_sec)}</div>
+      </div>
+    </div>
+    ${mix.narrative ? `<div class="narrative-block"><p class="narrative-text">${esc(mix.narrative)}</p>
+      ${images.length ? `<div class="narrative-images">${images.map(u => `<img src="${esc(u)}" alt="AI-generated image for this mix">`).join('')}</div>` : ''}
+    </div>` : ''}
+    <div class="tracks">${(mix.tracklist || []).map(t => `
+      <div class="track-row">
+        <span class="track-num">${esc(t.name || '')}</span>
+        <span class="track-label" title="${esc(t.label || '')}">${esc(t.label || '')}</span>
+        <span class="track-bpm">${t.bpm ? Math.round(t.bpm) + ' BPM' : ''}</span>
+      </div>`).join('')}</div>
+    <div class="card-footer">
+      <div class="player" data-player-id="${mix.id}" data-markers="${esc((mix.transition_markers_sec || []).join(','))}">
+        <button class="play-btn" data-action="c-toggle-play" data-id="${mix.id}">▶</button>
+        <span class="time-cur">0:00</span>
+        <div class="seek-track" data-id="${mix.id}">
+          <div class="seek-track-bg"><div class="seek-fill"></div><div class="seek-markers"></div><div class="seek-thumb"></div></div>
+        </div>
+        <span class="time-dur">0:00</span>
+        <audio data-audio-id="${mix.id}" preload="metadata" src="${audioUrl}"></audio>
+      </div>
+    </div>
+    <div class="creator-row">
+      <div class="creator-tag">by <b>${esc(mix.creator)}</b></div>
+      <div class="stats-row">
+        <button class="like-btn" data-action="c-like" data-id="${mix.id}">🤍 <span class="like-count">${mix.like_count}</span></button>
+        <span class="listen-count">▶ ${mix.listen_count} listens</span>
+      </div>
+    </div>
+    <div style="margin-top:10px;"><a class="btn-sm" href="${audioUrl}" download="${esc(mix.title)}.mp3">⬇ Download</a></div>
+  `;
+}
+
+async function loadCommunityGallery(sort = 'recent') {
+  if (!GALLERY_URL) return;
+  try {
+    const res = await fetch(`${GALLERY_URL}/api/gallery?sort=${sort}`);
+    const mixes = await res.json();
+    communityEmptyState.style.display = mixes.length ? 'none' : 'block';
+    communityGrid.innerHTML = mixes.map(m => `<div class="card">${renderCommunityCard(m)}</div>`).join('');
+    wireAudioPlayers(communityGrid);
+  } catch {
+    communityEmptyState.style.display = 'block';
+    communityEmptyState.querySelector('h2').textContent = "Can't reach the gallery server";
+  }
+}
+
+communityGrid.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const { action, id } = btn.dataset;
+  if (action === 'c-toggle-play') {
+    const audio = communityGrid.querySelector(`audio[data-audio-id="${id}"]`);
+    if (!audio) return;
+    if (audio.paused) {
+      audio.play();
+      if (!audio.dataset.listenCounted) {
+        audio.dataset.listenCounted = '1';
+        fetch(`${GALLERY_URL}/api/gallery/${id}/listen`, { method: 'POST' }).catch(() => {});
+      }
+    } else {
+      audio.pause();
+    }
+  } else if (action === 'c-like') {
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${GALLERY_URL}/api/gallery/${id}/like`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ liker_id: getLikerId() }),
+      });
+      const data = await res.json();
+      btn.classList.toggle('liked', data.liked);
+      btn.querySelector('.like-count').textContent = data.like_count;
+      btn.firstChild.textContent = data.liked ? '❤️ ' : '🤍 ';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+});
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const isCommunity = btn.dataset.tab === 'community';
+    document.getElementById('mineView').style.display = isCommunity ? 'none' : '';
+    document.getElementById('communityView').style.display = isCommunity ? '' : 'none';
+    if (isCommunity) loadCommunityGallery(document.querySelector('.sort-btn.active')?.dataset.sort || 'recent');
+  });
+});
+document.querySelectorAll('.sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadCommunityGallery(btn.dataset.sort);
+  });
+});
+
+// ── shut the whole app down when this window closes ─────────────────────
+// Closing the visible app window used to leave the Python server (and any
+// in-progress build) running invisibly in the background — only closing
+// the Terminal window actually stopped it, which almost nobody thinks to
+// do. Two mechanisms, working together:
+//  1. pagehide fires the instant this window/tab actually closes — use it
+//     to tell the server to shut down immediately, even mid-build.
+//     sendBeacon (not fetch) because it's the only request type guaranteed
+//     to actually go out during page teardown.
+//  2. A steady heartbeat while the page is open is the backstop for cases
+//     pagehide doesn't fire (force-quit, crash) — the server shuts itself
+//     down once heartbeats stop arriving, but only when nothing is
+//     actively building, so a backgrounded/minimized window during a long
+//     build (which Chrome can throttle heavily) never gets killed early.
+window.addEventListener('pagehide', () => {
+  navigator.sendBeacon('/api/shutdown');
+});
+setInterval(() => {
+  fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+}, 5000);
+
+// ── boot ──────────────────────────────────────────────────────────────
+(async function boot() {
+  fetch('/api/build').then(r => r.json()).then(b => {
+    document.getElementById('buildTag').textContent = b.build;
+  }).catch(() => {});
+  const cfg = await (await fetch('/api/config')).json();
+  if (!cfg.configured) openSettingsModal({ forced: true });
+  try {
+    const gcfg = await (await fetch('/api/gallery-config')).json();
+    GALLERY_URL = gcfg.gallery_url;
+    MY_USERNAME = gcfg.username;
+    updateUsernameBtn();
+    const shareLink = document.getElementById('sharePublicLink');
+    if (shareLink && GALLERY_URL) {
+      shareLink.addEventListener('click', async (e) => {
+        e.preventDefault();
+        try {
+          await navigator.clipboard.writeText(GALLERY_URL);
+          showToast('Public link copied — send it to friends!');
+        } catch {
+          window.open(GALLERY_URL, '_blank');
+        }
+      });
+    }
+  } catch {}
+  await loadJobs();
+})();
+</script>
+</body>
+</html>
