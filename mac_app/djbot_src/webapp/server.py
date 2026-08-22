@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 from job_runner import run_job, _slugify
 
-BUILD_TAG = "2026-08-22-robustness-pass-v1"
+BUILD_TAG = "2026-08-22-applescript-injection-fix-v1"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -572,6 +572,16 @@ def set_username(body: UsernameIn):
 # endpoint needed here anymore.
 
 
+def _applescript_quote(s: str) -> str:
+    """Escape a value for safe embedding inside a double-quoted AppleScript
+    string literal. Without this, any '"' in a recipient name or an
+    AI-generated mix name (used as the email subject) breaks the script —
+    and a deliberately placed '"' can inject arbitrary AppleScript, since
+    these values were previously interpolated directly via f-string with no
+    escaping at all."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 @app.post("/api/jobs/{job_id}/share/imessage")
 def share_imessage(job_id: str, body: ShareIn):
     path = _finished_audio_path(job_id)
@@ -581,8 +591,8 @@ def share_imessage(job_id: str, body: ShareIn):
     script = f'''
     tell application "Messages"
         set targetService to 1st service whose service type = iMessage
-        set targetBuddy to buddy "{recipient}" of targetService
-        send POSIX file "{path}" to targetBuddy
+        set targetBuddy to buddy "{_applescript_quote(recipient)}" of targetService
+        send POSIX file "{_applescript_quote(str(path))}" to targetBuddy
     end tell
     '''
     result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=30)
@@ -603,10 +613,10 @@ def share_email(job_id: str, body: ShareIn):
     # user to review before sending, rather than firing an email blind.
     script = f'''
     tell application "Mail"
-        set newMsg to make new outgoing message with properties {{subject:"{subject}", visible:true}}
+        set newMsg to make new outgoing message with properties {{subject:"{_applescript_quote(subject)}", visible:true}}
         tell newMsg
-            make new to recipient with properties {{address:"{recipient}"}}
-            make new attachment with properties {{file name:POSIX file "{path}"}} at after the last paragraph
+            make new to recipient with properties {{address:"{_applescript_quote(recipient)}"}}
+            make new attachment with properties {{file name:POSIX file "{_applescript_quote(str(path))}"}} at after the last paragraph
         end tell
         activate
     end tell
