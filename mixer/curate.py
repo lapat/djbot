@@ -116,12 +116,19 @@ def curate_tracklist(request_text: str, n_tracks: int, api_key: str, model: str 
 
 
 def find_youtube_id(artist: str, title: str, timeout: int = 20):
-    """Metadata-only yt-dlp search (no download) — returns a real video ID or None."""
+    """Metadata-only yt-dlp search (no download) — returns a real video ID or
+    None. A slow/hung search for one track must not crash the whole curation
+    step — the caller already treats None as "couldn't find it, skip" for
+    the normal not-found case, so a timeout or any other subprocess failure
+    here degrades the same way instead of raising and killing the job."""
     query = f"ytsearch1:{artist} - {title} audio"
-    result = subprocess.run(
-        ["yt-dlp", "--flat-playlist", "--print", "%(id)s", "--no-warnings", query],
-        capture_output=True, text=True, timeout=timeout,
-    )
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--flat-playlist", "--print", "%(id)s", "--no-warnings", query],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
     lines = result.stdout.strip().splitlines()
     return lines[0] if lines else None
 

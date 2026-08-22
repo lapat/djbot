@@ -15,6 +15,7 @@ import json
 import os
 
 import librosa
+import librosa.feature.rhythm
 import numpy as np
 from scipy.signal import butter, sosfilt
 
@@ -60,8 +61,9 @@ def _precise_bpm(y: np.ndarray, sr: int, hint_bpm: float) -> float:
     """
     hop = 512
     env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop)
-    # librosa.beat.tempo returns the peak of the tempogram
-    tempo = librosa.beat.tempo(
+    # librosa.feature.rhythm.tempo returns the peak of the tempogram (moved
+    # here from librosa.beat.tempo in 0.10.0; the old alias is removed in 1.0)
+    tempo = librosa.feature.rhythm.tempo(
         onset_envelope=env,
         sr=sr,
         hop_length=hop,

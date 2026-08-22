@@ -45,8 +45,10 @@ for _var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS",
              "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
     os.environ[_var] = str(_THREADS_PER_JOB)
 
+import queue
 import random
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -68,6 +70,16 @@ try:
     torch.set_num_threads(_THREADS_PER_JOB)
 except ImportError:
     pass
+
+# A single yt-dlp invocation must never be able to hang a job forever. Two
+# independent caps: DOWNLOAD_IDLE_TIMEOUT_SEC catches a process that's still
+# alive but has stopped producing any output at all (e.g. a stuck network
+# read with no error surfaced yet); DOWNLOAD_HARD_TIMEOUT_SEC is a backstop
+# for a process that keeps producing output but never actually finishes.
+# Both just make one _run() attempt fail — the existing 3-attempt retry
+# chain in _download_with_progress already handles a single failed attempt.
+DOWNLOAD_IDLE_TIMEOUT_SEC = 90
+DOWNLOAD_HARD_TIMEOUT_SEC = 600
 
 DOWNLOAD_PCT_RE = re.compile(r"\[download\]\s+([\d.]+)% of")
 TRANSITION_RE = re.compile(r"^\s*\[(\d+)\]\s+(.+)$")
@@ -234,6 +246,25 @@ class JobContext:
             self.state["eta_seconds"] = None
 
 
+def _kill_process_tree(proc: subprocess.Popen):
+    """proc.kill() only signals the direct child — yt-dlp forks its own
+    children (ffmpeg for audio conversion) that would otherwise be silently
+    orphaned and keep running after we think we've killed a stalled/hung
+    download. Confirmed live: a simulated hang left the forked child process
+    still running after proc.kill() alone. Requires the process to have been
+    started with start_new_session=True so the whole tree shares one process
+    group and a single signal reaches all of it. POSIX only — same fallback
+    convention already used by server.py's _shutdown_everything() for the
+    same underlying reason (no os.killpg on Windows)."""
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            return
+        except ProcessLookupError:
+            return  # already exited
+    proc.kill()
+
+
 def _download_with_progress(video_id: str, dest: Path, track: dict, ctx: JobContext):
     if dest.exists():
         track["download_status"] = "done"
@@ -254,17 +285,57 @@ def _download_with_progress(video_id: str, dest: Path, track: dict, ctx: JobCont
         proc = subprocess.Popen(
             base_cmd + extra_args + [url],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+            start_new_session=True,  # own process group — see _kill_process_tree
         )
+        # Read stdout on a background thread into a queue instead of
+        # iterating `proc.stdout` directly on this thread — a plain `for
+        # line in proc.stdout` blocks with no timeout of its own, so a
+        # yt-dlp process that goes quiet (stuck network read, no error ever
+        # printed) would hang this whole job forever; the only other timeout
+        # (proc.wait) is never even reached until stdout closes. Reading via
+        # a queue lets us bound how long we wait for the NEXT line, not just
+        # the process's total runtime.
+        lines: queue.Queue = queue.Queue()
+
+        def _reader():
+            try:
+                for raw_line in proc.stdout:
+                    lines.put(raw_line)
+            finally:
+                lines.put(None)  # sentinel: stdout closed (process finishing)
+
+        threading.Thread(target=_reader, daemon=True).start()
+
         last_err_lines = []
-        for line in proc.stdout:
-            line = line.rstrip("\n")
+        deadline = time.monotonic() + DOWNLOAD_HARD_TIMEOUT_SEC
+        while True:
+            try:
+                raw_line = lines.get(timeout=DOWNLOAD_IDLE_TIMEOUT_SEC)
+            except queue.Empty:
+                ctx.log_line(
+                    f"  {track['label']}: no progress for {DOWNLOAD_IDLE_TIMEOUT_SEC}s — "
+                    f"treating as stalled and killing it"
+                )
+                _kill_process_tree(proc)
+                proc.wait(timeout=10)
+                return 1, f"download stalled — no output for {DOWNLOAD_IDLE_TIMEOUT_SEC}s"
+            if raw_line is None:
+                break
+            if time.monotonic() > deadline:
+                ctx.log_line(
+                    f"  {track['label']}: exceeded {DOWNLOAD_HARD_TIMEOUT_SEC}s hard cap — killing it"
+                )
+                _kill_process_tree(proc)
+                proc.wait(timeout=10)
+                return 1, f"download exceeded the {DOWNLOAD_HARD_TIMEOUT_SEC}s hard cap"
+            line = raw_line.rstrip("\n")
             m = DOWNLOAD_PCT_RE.search(line)
             if m:
                 track["download_pct"] = float(m.group(1))
                 ctx.publish()
             elif "ERROR" in line or "error" in line.lower():
                 last_err_lines.append(line)
-        proc.wait(timeout=180)
+        proc.wait(timeout=30)
         return proc.returncode, "\n".join(last_err_lines[-5:])
 
     rc, err = _run(["--cookies-from-browser", "chrome"], "downloading (using Chrome session)...")

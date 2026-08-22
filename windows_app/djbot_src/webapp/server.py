@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 from job_runner import run_job, _slugify
 
-BUILD_TAG = "2026-08-22-persist-ai-images-v2"
+BUILD_TAG = "2026-08-22-robustness-pass-v1"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -421,6 +421,7 @@ def retry_with_own_key(job_id: str, cfg: ConfigIn):
         "created_at": time.time(), "started_at": time.time(), "tracks": [], "log": [],
         "percent": 0, "eta_seconds": None, "error": None, "error_type": None,
         "output_rel_path": None, "narrative": None, "mix_name": None, "story_image_url": None, "dj_image_url": None,
+        "published": None,
     }
     _queue_order.append(new_id)
     _pump_queue()
