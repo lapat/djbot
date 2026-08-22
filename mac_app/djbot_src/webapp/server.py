@@ -27,9 +27,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from job_runner import run_job
+from job_runner import run_job, _slugify
 
-BUILD_TAG = "2026-08-19-voice-intros-v1"
+BUILD_TAG = "2026-08-22-persist-ai-images-v2"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -470,6 +470,27 @@ def get_audio(job_id: str):
         path, media_type="audio/mpeg",
         headers={"Content-Disposition": f'inline; filename="{path.name}"'},
     )
+
+
+@app.get("/api/jobs/{job_id}/image/{kind}")
+def get_job_image(job_id: str, kind: str):
+    """Serves the AI-generated mix image from our own permanent local copy
+    (see _save_story_image in job_runner.py) instead of the temporary
+    Replicate/AI-gateway delivery URL, which expires within hours/a day and
+    used to be stored (and shown) directly. Keyed off the request text's
+    slug — same directory job_runner.py itself writes to — rather than
+    output_rel_path, so the image is servable while a job is still running,
+    not just once it's fully done."""
+    if kind not in ("story", "dj"):
+        raise HTTPException(404, "unknown image kind")
+    state = jobs.get(job_id)
+    if not state:
+        raise HTTPException(404, "job not found")
+    slug = _slugify(state.get("request") or "")
+    path = DATA_DIR / "output" / slug / f"{kind}_image.jpg"
+    if not path.exists():
+        raise HTTPException(404, "image not found")
+    return FileResponse(path, media_type="image/jpeg")
 
 
 @app.get("/api/jobs/{job_id}/reveal")

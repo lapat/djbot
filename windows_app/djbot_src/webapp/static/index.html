@@ -560,7 +560,7 @@ function renderCard(job) {
     const images = [job.story_image_url, job.dj_image_url].filter(Boolean);
     storyHtml = `<div class="narrative-block">
       ${job.narrative ? `<p class="narrative-text">${esc(job.narrative)}</p>` : ''}
-      ${images.length ? `<div class="narrative-images">${images.map(u => `<img src="${esc(u)}" alt="AI-generated image for this mix">`).join('')}</div>` : ''}
+      ${images.length ? `<div class="narrative-images">${images.map(u => `<img src="${esc(u)}" alt="AI-generated image for this mix" onerror="this.closest('.narrative-images').style.display='none'">`).join('')}</div>` : ''}
     </div>`;
   }
 
@@ -994,7 +994,7 @@ function renderCommunityCard(mix) {
       </div>
     </div>
     ${mix.narrative ? `<div class="narrative-block"><p class="narrative-text">${esc(mix.narrative)}</p>
-      ${images.length ? `<div class="narrative-images">${images.map(u => `<img src="${esc(u)}" alt="AI-generated image for this mix">`).join('')}</div>` : ''}
+      ${images.length ? `<div class="narrative-images">${images.map(u => `<img src="${esc(u)}" alt="AI-generated image for this mix" onerror="this.closest('.narrative-images').style.display='none'">`).join('')}</div>` : ''}
     </div>` : ''}
     <div class="tracks">${(mix.tracklist || []).map(t => `
       <div class="track-row">

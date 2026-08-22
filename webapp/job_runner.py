@@ -313,7 +313,7 @@ def _normalize_loudness(path: Path):
         tmp.unlink(missing_ok=True)
 
 
-def _tag_audio(path: Path, title: str, cover_image_url: str | None):
+def _tag_audio(path: Path, title: str, cover_image_path: Path | None):
     """Best-effort ID3 tags + embedded cover art (the AI story image, if
     one was generated). Never raises — tagging failure shouldn't lose the
     mix any more than normalization failure should."""
@@ -328,15 +328,14 @@ def _tag_audio(path: Path, title: str, cover_image_url: str | None):
         tags["TPE1"] = TPE1(encoding=3, text="DJ Kyoko")
         tags["TALB"] = TALB(encoding=3, text=f"DJ Kyoko Mix — {time.strftime('%Y-%m-%d')}")
 
-        if cover_image_url:
-            img_resp = requests.get(cover_image_url, timeout=20)
-            img_resp.raise_for_status()
+        has_cover = cover_image_path and cover_image_path.exists()
+        if has_cover:
             tags["APIC"] = APIC(
                 encoding=3, mime="image/jpeg", type=3, desc="Cover",
-                data=img_resp.content,
+                data=cover_image_path.read_bytes(),
             )
         tags.save(str(path))
-        print("  Tagged: title/artist/album" + (" + cover art" if cover_image_url else ""))
+        print("  Tagged: title/artist/album" + (" + cover art" if has_cover else ""))
     except Exception as e:  # noqa: BLE001 — decorative, never fail the job over it
         print(f"  ID3 tagging skipped: {type(e).__name__}: {e}")
 
@@ -360,18 +359,16 @@ def _publish_to_gallery(ctx, out_path: Path, request_text: str):
         for t in ctx.state.get("tracks", [])
     ]
 
-    def _fetch_image(url):
-        if not url:
-            return None
+    def _local_image(path: Path):
         try:
-            r = requests.get(url, timeout=15)
-            r.raise_for_status()
-            return ("image.jpg", r.content, "image/jpeg")
+            return ("image.jpg", path.read_bytes(), "image/jpeg")
         except Exception:
             return None
 
-    story_image = _fetch_image(ctx.state.get("story_image_url"))
-    dj_image = _fetch_image(ctx.state.get("dj_image_url"))
+    # story_image_url is now a local-server API path (see _save_story_image),
+    # not a fetchable URL — read the same file straight off disk instead.
+    story_image = _local_image(out_path.parent / "story_image.jpg")
+    dj_image = None  # dj portrait generation is unused (see _generate_story_assets)
 
     try:
         with open(out_path, "rb") as f:
@@ -402,7 +399,27 @@ def _publish_to_gallery(ctx, out_path: Path, request_text: str):
         ctx.set(published=False)
 
 
-def _generate_story_assets(ctx, request_text, tracks_state, api_key, base_url, model, replicate_key):
+def _save_story_image(root: Path, slug: str, url: str) -> bool:
+    """Downloads the image bytes immediately and stores them permanently on
+    our own disk. The URL Replicate/the AI gateway hands back is a temporary
+    delivery link (confirmed: both plain replicate.delivery URLs and, more
+    recently, presigned ai-gateway/Cloudflare R2 URLs with a 24h
+    X-Amz-Expires) — persisting that URL string itself (as this used to do)
+    means the image silently 404s for anyone who opens the mix again after
+    it expires. Downloading now, while the link is fresh, is the only fix."""
+    try:
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        dest = root / "output" / slug / "story_image.jpg"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(r.content)
+        return True
+    except Exception:
+        return False
+
+
+def _generate_story_assets(ctx, request_text, tracks_state, api_key, base_url, model,
+                            replicate_key, root, slug):
     """Best-effort creative flourishes — a mix name + narrative + two AI
     images. Runs in a background thread; never raises, never fails the mix.
     Each step is wrapped individually so one failure (e.g. Replicate being
@@ -429,8 +446,10 @@ def _generate_story_assets(ctx, request_text, tracks_state, api_key, base_url, m
     # silently return nothing at all before that was fixed).
     try:
         image = generate_story_image(story["narrative"], replicate_key)
-        if image:
-            ctx.set(story_image_url=image)
+        if image and _save_story_image(root, slug, image):
+            ctx.set(story_image_url=f"/api/jobs/{ctx.job_id}/image/story")
+        elif image:
+            ctx.log_line("  (story image generated but failed to save locally)")
         else:
             ctx.log_line("  (story image generation returned nothing usable)")
     except Exception as e:  # noqa: BLE001
@@ -585,7 +604,7 @@ def _attempt_build(ctx, request_text, slug, validated, root, api_key, base_url, 
     # timeout near the end so they usually land before the job reports done.
     story_thread = threading.Thread(
         target=_generate_story_assets,
-        args=(ctx, request_text, tracks_state, api_key, base_url, model, replicate_key),
+        args=(ctx, request_text, tracks_state, api_key, base_url, model, replicate_key, root, slug),
         daemon=True,
     )
     story_thread.start()
@@ -667,7 +686,7 @@ def _attempt_build(ctx, request_text, slug, validated, root, api_key, base_url, 
     story_thread.join(timeout=100)
 
     title = ctx.state.get("mix_name") or request_text
-    _tag_audio(out_path, title, ctx.state.get("story_image_url"))
+    _tag_audio(out_path, title, out_path.parent / "story_image.jpg")
 
     display_name = re.sub(r'[^\w\s-]', '', title).strip()
     display_name = re.sub(r'[-\s]+', ' ', display_name)[:80] or "DJ Kyoko Mix"
