@@ -3,6 +3,7 @@ Harmonic (Camelot Wheel) curation report — entry point.
 
 Usage:
   python harmonic_report.py solomun
+  python harmonic_report.py solomun --set-order   # also suggest a reorder
 
 Prints each consecutive track pair in a brain's TRACKS list with its BPM
 diff_pct, detected Camelot keys, and whether they're harmonically compatible
@@ -27,19 +28,22 @@ import sys, os, importlib
 sys.path.insert(0, os.path.dirname(__file__))
 from mixer.beatgrid import get_or_analyze
 from mixer.harmonic import camelot_compatible
+from make_mix import _harmonic_resort
 
 AVAILABLE = ["luno", "solomun", "afterlife", "test3",
              "taleous", "bodzin", "bicep", "maceoplex", "benbohmer"]
 
 
-def report(brain):
+def _analyze_all(tracks):
+    return [get_or_analyze(t["path"], hint_bpm=t["hint"]) for t in tracks]
+
+
+def report(brain, grids=None):
     tracks = brain.TRACKS
     print(f"\n  Harmonic report: {brain.SET_NAME}  ({len(tracks)} tracks)\n")
 
-    grids = []
-    for t in tracks:
-        g = get_or_analyze(t["path"], hint_bpm=t["hint"])
-        grids.append(g)
+    if grids is None:
+        grids = _analyze_all(tracks)
 
     compatible_count = 0
     for i, t in enumerate(tracks):
@@ -66,13 +70,48 @@ def report(brain):
               f"harmonically compatible by Camelot adjacency.\n")
 
 
+def suggest_set_order(brain, grids):
+    """
+    Print-only: what mixer.harmonic + make_mix's soft re-sort would suggest
+    for this brain's TRACKS list. Never writes anything — brains stay
+    hand-curated by design (see this file's module docstring). Reuses
+    make_mix.py's _harmonic_resort (2026-09-04) rather than a second
+    implementation, so the diagnostic always matches what an actual
+    make_mix.py free-text build would do with the same tracks.
+    """
+    tracks = brain.TRACKS
+    max_diff = getattr(brain, "MAX_BPM_DIFF_PCT", 8.0)
+    resorted = _harmonic_resort(tracks, grids, max_bpm_diff_pct=max_diff)
+
+    print(f"  Suggested set order (max_bpm_diff_pct={max_diff}):\n")
+    if [t["path"] for t in resorted] == [t["path"] for t in tracks]:
+        print("  No change — current order already respects harmonic "
+              "compatibility within tempo-compatible neighbors.\n")
+        return
+
+    orig_index = {id(t): i for i, t in enumerate(tracks)}
+    for new_pos, t in enumerate(resorted):
+        old_pos = orig_index[id(t)]
+        moved = "" if old_pos == new_pos else f"  (was #{old_pos + 1:02d})"
+        print(f"  {new_pos + 1:02d}  {t['label']:<40}{moved}")
+    print("\n  This is a suggestion only — brains/*.py stays hand-curated; "
+          "nothing was written.\n")
+
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in AVAILABLE:
-        print(f"\nUsage: python harmonic_report.py [{' | '.join(AVAILABLE)}]\n")
+    args = sys.argv[1:]
+    set_order = "--set-order" in args
+    positional = [a for a in args if not a.startswith("--")]
+
+    if len(positional) < 1 or positional[0] not in AVAILABLE:
+        print(f"\nUsage: python harmonic_report.py [{' | '.join(AVAILABLE)}] [--set-order]\n")
         sys.exit(1)
 
-    brain = importlib.import_module(f"brains.{sys.argv[1]}")
-    report(brain)
+    brain = importlib.import_module(f"brains.{positional[0]}")
+    grids = _analyze_all(brain.TRACKS)
+    report(brain, grids=grids)
+    if set_order:
+        suggest_set_order(brain, grids)
 
 
 if __name__ == "__main__":
