@@ -194,12 +194,24 @@ def main():
 
     print(f"\n  Analyzing keys for harmonic ordering...")
     grids = [get_or_analyze(t["path"], hint_bpm=t.get("hint")) for t in tracks]
+    # Keyed by path (not list index) so this survives the re-sort below
+    # reordering `tracks` — the approx_bpm hint printed earlier is only a
+    # curator guess; this is the real detected BPM + key, only knowable
+    # now that each track is downloaded and analyzed.
+    grid_by_path = {t["path"]: g for t, g in zip(tracks, grids)}
     resorted = _harmonic_resort(tracks, grids)
     if [t["path"] for t in resorted] != [t["path"] for t in tracks]:
         print("  Harmonic re-sort: adjusted track order for better key flow")
         tracks = resorted
         for i, t in enumerate(tracks):
             t["name"] = f"T{i+1:02d}"
+
+    print(f"\n  Final tracklist:")
+    for t in tracks:
+        g = grid_by_path[t["path"]]
+        camelot = g.get("camelot", "?")
+        key_flag = " (low-conf)" if g.get("key_low_confidence") else ""
+        print(f"    {t['name']}  {t['label']:<40}  {g['bpm']:5.1f} BPM  {camelot}{key_flag}")
 
     brain = _Brain(
         style_name=slug,
