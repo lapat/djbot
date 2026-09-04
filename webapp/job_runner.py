@@ -64,6 +64,7 @@ from mixer.curate import curate_and_validate, BillingCapError, ANTHROPIC_URL
 from mixer.set_builder import build_full_set
 from mixer.story import generate_mix_story, generate_story_image, generate_track_intros
 from mixer.voice import generate_track_intro_audio
+from mixer.beatgrid import get_or_analyze
 
 try:
     import torch
@@ -702,6 +703,23 @@ def _attempt_build(ctx, request_text, slug, validated, root, api_key, base_url, 
         return
     if len(build_tracks) < len(tracks_state):
         print(f"  Continuing with {len(build_tracks)}/{len(tracks_state)} tracks (some were skipped).")
+
+    # Surface the real detected BPM + Camelot key in the live job view
+    # (2026-09-04, same spirit as make_mix.py's post-download tracklist
+    # print — added for job_runner.py's live UI here). build_full_set
+    # analyzes each track lazily during its own Pass 1, so this doesn't
+    # duplicate work — get_or_analyze caches, so build_full_set just hits
+    # the cache for these same tracks a moment later.
+    print("Analyzing keys...")
+    by_name = {ts["name"]: ts for ts in tracks_state}
+    for bt in build_tracks:
+        g = get_or_analyze(bt["path"], hint_bpm=bt.get("hint"))
+        ts = by_name.get(bt["name"])
+        if ts is not None:
+            ts["bpm"] = g.get("bpm", ts["bpm"])
+            ts["camelot"] = g.get("camelot")
+            ts["key_low_confidence"] = g.get("key_low_confidence", False)
+    ctx.set(tracks=tracks_state)
 
     _generate_voice_intros(ctx, request_text, build_tracks, api_key, base_url, model,
                             elevenlabs_key, root, slug)
