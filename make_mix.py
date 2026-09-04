@@ -75,16 +75,32 @@ def _download(video_id: str, dest: Path):
     # the JS challenge solver enabled — a real logged-in browser session
     # (via --cookies-from-browser) is what actually gets through. Fall back
     # to no cookies if Chrome isn't installed/usable on this machine.
-    result = subprocess.run(
-        base_cmd + ["--cookies-from-browser", "chrome", url],
-        capture_output=True, text=True, timeout=180,
-    )
-    if not dest.exists():
+    #
+    # subprocess.run(timeout=...) raises TimeoutExpired rather than returning
+    # a failed result — confirmed live 2026-09-04: two real timeouts (batch
+    # run competing with the installed app for the same Chrome cookie DB)
+    # went uncaught and crashed the whole build instead of falling through
+    # to the no-cookies retry below. Catch it explicitly so a slow/contended
+    # cookie read degrades to a retry instead of killing the run.
+    result = None
+    try:
         result = subprocess.run(
-            base_cmd + [url], capture_output=True, text=True, timeout=180,
+            base_cmd + ["--cookies-from-browser", "chrome", url],
+            capture_output=True, text=True, timeout=180,
         )
+    except subprocess.TimeoutExpired:
+        pass
     if not dest.exists():
-        raise RuntimeError(f"yt-dlp failed for {video_id}:\n{result.stdout}\n{result.stderr}")
+        try:
+            result = subprocess.run(
+                base_cmd + [url], capture_output=True, text=True, timeout=180,
+            )
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(f"yt-dlp timed out twice for {video_id} (180s each)") from e
+    if not dest.exists():
+        stdout = result.stdout if result else ""
+        stderr = result.stderr if result else ""
+        raise RuntimeError(f"yt-dlp failed for {video_id}:\n{stdout}\n{stderr}")
 
 
 def main():
