@@ -1341,6 +1341,27 @@ def build_full_set(brain):
         s = int(samples / sr)
         return f"{s // 60:02d}:{s % 60:02d}"
 
+    def _tier_note(tr):
+        """
+        One-line "why this transition sounds the way it does" for the cue
+        sheet (2026-09-04) — reads the same tr["hard_cut"]/["bridged"]/
+        ["soft_crossfade"]/["phase_err_ms"] fields set by
+        build_one_transition/_build_hard_cut_transition/
+        _build_soft_crossfade_transition. Read-only annotation of an
+        already-built transition — does not affect how any transition is
+        built.
+        """
+        if tr.get("hard_cut"):
+            if tr.get("soft_crossfade"):
+                return "soft crossfade — too far to beat-match, close enough to blend cleanly"
+            return "hard cut — tempos too far apart (or beat data unreliable) to blend"
+        if tr.get("bridged"):
+            return "bridged beat-match — forced tempo bridge past normal tolerance"
+        phase = tr.get("phase_err_ms")
+        if phase is not None:
+            return f"beat-matched blend — phase error {phase:.1f}ms"
+        return "beat-matched blend"
+
     cf_dur_s = round(snippet_clips[0]["blend_end"] - snippet_clips[0]["blend_start"]) / sr if snippet_clips else 0
     first_label = tracks[0].get("label", tracks[0]["name"])
     cue_lines = [
@@ -1356,6 +1377,8 @@ def build_full_set(brain):
         n = clip["idx"]
         suffix = "  ← PEAK" if label in ("Rampa - The Touch",) else ("  ← close" if "Stimming" in label else "")
         cue_lines.append(f"  {bs}–{be}  [{n:02d}] → {label}{suffix}")
+        if 0 <= n - 1 < len(transitions):
+            cue_lines.append(f"               {_tier_note(transitions[n - 1]['tr'])}")
 
     set_end_s = int(len(mix_audio) / sr)
     cue_lines.append(f"  {set_end_s // 60:02d}:{set_end_s % 60:02d}         Set ends")
