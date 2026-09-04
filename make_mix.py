@@ -33,8 +33,53 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from mixer.curate import curate_and_validate, BillingCapError, ANTHROPIC_URL
 from mixer.set_builder import build_full_set
+from mixer.beatgrid import get_or_analyze
+from mixer.harmonic import camelot_compatible
 
 ROOT = Path(__file__).resolve().parent
+
+
+def _harmonic_resort(tracks: list, grids: list, max_bpm_diff_pct: float = 15.0) -> list:
+    """
+    Soft re-sort (2026-09-04): a curated tracklist already has an intentional
+    BPM/energy arc (see CURATION_SYSTEM_PROMPT in mixer/curate.py) — this
+    never reshuffles that. It only looks at adjacent pairs that are ALREADY
+    close in tempo (within max_bpm_diff_pct, same threshold the build engine
+    itself uses to decide whether to beatmatch) and, if that pair isn't
+    harmonically compatible, swaps in a later track that is — but only if
+    the replacement is ALSO within the same tempo tolerance of the earlier
+    track. A hard-tempo-jump boundary in the curated order is left alone
+    entirely; this is additive polish, never a re-ordering of the arc.
+
+    `tracks` and `grids` must be parallel lists (grids[i] is tracks[i]'s
+    beatgrid dict, from get_or_analyze — already has "bpm", "camelot",
+    "key_low_confidence"). Returns a new, possibly-reordered list of tracks;
+    never drops or duplicates an entry.
+    """
+    order = list(range(len(tracks)))
+    for i in range(len(order) - 1):
+        cur = grids[order[i]]
+        nxt = grids[order[i + 1]]
+        if not cur.get("bpm") or not nxt.get("bpm"):
+            continue
+        bpm_diff_pct = abs(cur["bpm"] - nxt["bpm"]) / cur["bpm"] * 100
+        if bpm_diff_pct > max_bpm_diff_pct:
+            continue  # not our tempo tier to touch
+        if cur.get("key_low_confidence") or nxt.get("key_low_confidence"):
+            continue  # don't trust an unreliable key guess
+        if camelot_compatible(cur.get("camelot"), nxt.get("camelot")):
+            continue  # already fine
+        for j in range(i + 2, len(order)):
+            cand = grids[order[j]]
+            if not cand.get("bpm") or cand.get("key_low_confidence"):
+                continue
+            cand_diff_pct = abs(cur["bpm"] - cand["bpm"]) / cur["bpm"] * 100
+            if cand_diff_pct > max_bpm_diff_pct:
+                continue
+            if camelot_compatible(cur.get("camelot"), cand.get("camelot")):
+                order[i + 1], order[j] = order[j], order[i + 1]
+                break
+    return [tracks[i] for i in order]
 
 
 def _slugify(text: str) -> str:
@@ -146,6 +191,15 @@ def main():
             "path": str(dest),
             "hint": t.get("approx_bpm"),
         })
+
+    print(f"\n  Analyzing keys for harmonic ordering...")
+    grids = [get_or_analyze(t["path"], hint_bpm=t.get("hint")) for t in tracks]
+    resorted = _harmonic_resort(tracks, grids)
+    if [t["path"] for t in resorted] != [t["path"] for t in tracks]:
+        print("  Harmonic re-sort: adjusted track order for better key flow")
+        tracks = resorted
+        for i, t in enumerate(tracks):
+            t["name"] = f"T{i+1:02d}"
 
     brain = _Brain(
         style_name=slug,
