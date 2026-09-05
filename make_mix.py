@@ -155,6 +155,11 @@ def main():
     parser.add_argument("request", help='free-text request, e.g. "solomun meets madonna"')
     parser.add_argument("--minutes", type=float, default=30.0, help="rough target length (default 30)")
     parser.add_argument("--model", default="claude-sonnet-5")
+    parser.add_argument("--dry-run", action="store_true",
+                         help="curate and print the tracklist, then stop — no download, no build. "
+                              "BPM/key aren't shown here (they need the audio downloaded); this is "
+                              "for previewing what a request would curate before committing to the "
+                              "slow download+build phase.")
     args = parser.parse_args()
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -179,6 +184,18 @@ def main():
     print(f"  {len(validated)}/{n_tracks} tracks confirmed on YouTube:")
     for t in validated:
         print(f"    {t['artist']} - {t['title']}  (~{t.get('approx_bpm', '?')} BPM)")
+
+    if args.dry_run:
+        # Rough, deliberately wide estimate — yt-dlp per-track time varies a
+        # lot with network/YouTube throttling, and CPU-only beat_this
+        # inference varies with track length. This is a preview, not a
+        # promise.
+        low = round(len(validated) * 1.0)
+        high = round(len(validated) * 3.0)
+        print(f"\n  Dry run — stopping here, no download, no build.")
+        print(f"  A real run would download {len(validated)} track(s) and beat/key-analyze "
+              f"each — roughly {low}-{high} min total on a normal connection.")
+        return
 
     print(f"\n  Downloading...")
     tracks = []
