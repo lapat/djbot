@@ -1303,6 +1303,11 @@ def build_full_set(brain):
             print(f"    [{clip['idx']:02d}] blend-in   {label:<32}  RMS ratio {ratio:.2f}  {sym}")
             if ratio >= CUT_THRESHOLD:
                 cut_found = True
+                # Stash for the cue-sheet annotation below (2026-09-05) —
+                # read-only visibility into a known issue, doesn't change
+                # any audio. clip["amplitude_warning"] tracks the worst
+                # ratio seen across blend-in/blend-out for this transition.
+                clip["amplitude_warning"] = max(ratio, clip.get("amplitude_warning") or 0)
 
         # blend-out: outgoing track has faded, body of incoming track begins
         if be >= window and be + window < len(mix_audio):
@@ -1313,6 +1318,7 @@ def build_full_set(brain):
             print(f"    [{clip['idx']:02d}] blend-out  {label:<32}  RMS ratio {ratio:.2f}  {sym}")
             if ratio >= CUT_THRESHOLD:
                 cut_found = True
+                clip["amplitude_warning"] = max(ratio, clip.get("amplitude_warning") or 0)
 
     if cut_found:
         print("  !! WARNING: amplitude discontinuity detected — check the flagged transitions")
@@ -1379,6 +1385,10 @@ def build_full_set(brain):
         cue_lines.append(f"  {bs}–{be}  [{n:02d}] → {label}{suffix}")
         if 0 <= n - 1 < len(transitions):
             cue_lines.append(f"               {_tier_note(transitions[n - 1]['tr'])}")
+        amp_warn = clip.get("amplitude_warning")
+        if amp_warn:
+            cue_lines.append(f"               ⚠ amplitude jump detected — {amp_warn:.1f}x RMS "
+                              f"(threshold {CUT_THRESHOLD}x) at this transition")
 
     set_end_s = int(len(mix_audio) / sr)
     cue_lines.append(f"  {set_end_s // 60:02d}:{set_end_s % 60:02d}         Set ends")
