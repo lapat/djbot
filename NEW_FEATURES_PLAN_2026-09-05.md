@@ -140,3 +140,37 @@ Windows to the same parity Mac got in round 1's item 4.
     windows_version — the same proof standard as the Mac rebuild.
 19. If time remains: polish, or a fresh look at what check_stale.py /
     the codebase turns up.
+
+## Round 4 backlog (same day, fourth session — "brainstorm + bug hunt")
+
+Round 3 (items 15-18) resolved, all shipped, including a real production
+bug found and fixed along the way (static/downloads/*.zip was gitignored
+in djbot-gallery, and `railway up` filters its upload by .gitignore —
+silently broke BOTH /download/mac and /download/windows with a 500 the
+first deploy after item 8's git init added a .gitignore; fixed by
+un-ignoring and committing the zips, redeployed, reverified live).
+
+Requested explicitly this round: brainstorm new features AND bug-hunt,
+not just build from a pre-set list.
+
+Bug-hunting pass done: audited requirements.txt vs actual imports in both
+djbot-gallery and djbot's webapp — no gaps found (mutagen, requests,
+fastapi/pydantic all correctly listed). Found one real gap by inspection
+though: `_publish_to_gallery`'s tracklist construction reads the final
+(possibly harmonic-resorted) `ctx.state["tracks"]` correctly, but only
+copies `name`/`label`/`bpm` — the Camelot key added in items 8/12 never
+makes it into the PERMANENT published gallery record, only the live job
+view. That's item 20.
+
+20. **Surface Camelot key in the published gallery tracklist**, not just
+    the live job view. Update `_publish_to_gallery`'s tracklist dict to
+    include `camelot`/`key_low_confidence`, and the gallery card renderer
+    in djbot-gallery's static/index.html to display it (same low-conf
+    convention as everywhere else this session).
+21. **Add a deploy-verification script for djbot-gallery** — directly
+    prevents the exact bug class just found. After any `railway up`,
+    verify /health, /api/app-version, AND /download/mac + /download/windows
+    all return 200 with a sane size (not just "the container started").
+22. If time remains: extend djbot-gallery's smoke test (item 13) to also
+    assert static/downloads/*.zip actually exist on disk — a local,
+    pre-deploy version of item 21's check.
