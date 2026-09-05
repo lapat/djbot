@@ -19,6 +19,8 @@ import librosa.feature.rhythm
 import numpy as np
 from scipy.signal import butter, sosfilt
 
+from mixer.harmonic import detect_key
+
 
 def _load_mono(path: str) -> tuple[np.ndarray, int]:
     """Load audio as mono float32, native sample rate."""
@@ -172,12 +174,18 @@ def analyze_track(path: str, hint_bpm: float | None = None) -> dict:
     # Beat anchor
     anchor = _find_first_kick_sample(y, sr, bpm)
 
+    # Harmonic key (2026-08-28) — reuses the same already-loaded `y, sr`, no
+    # extra file load. Additive signal only (see mixer/harmonic.py); never
+    # gates a build the way low_confidence does for BPM.
+    key_info = detect_key(y, sr)
+
     return {
         "bpm":                 round(bpm, 4),
         "beat_anchor_sample":  anchor,
         "sr":                  sr,
         "beat_period_samples": beat_period_samples,
         "low_confidence":      low_confidence,
+        **key_info,
     }
 
 
@@ -215,13 +223,21 @@ def get_or_analyze(path: str, hint_bpm: float | None = None, force: bool = False
     # this exact gap let a bad Snap!->2 Unlimited transition through, since
     # "2 Unlimited - No Limit"'s cache entry was written before this flag
     # existed).
-    if not force and key in cache and "low_confidence" in cache[key]:
+    # Same reasoning as the low_confidence backward-compat check above: a
+    # cache entry written before harmonic-key detection existed (2026-08-28)
+    # has no "camelot" field. Re-analyze rather than silently leaving key
+    # data missing for every track analyzed before this date.
+    if not force and key in cache and "low_confidence" in cache[key] and "camelot" in cache[key]:
         return cache[key]
 
     print(f"  Analyzing beat grid: {os.path.basename(path)}")
     grid = analyze_track(path, hint_bpm=hint_bpm)
     conf_note = "  [LOW CONFIDENCE — unvalidated hint]" if grid.get("low_confidence") else ""
-    print(f"    BPM={grid['bpm']:.4f}  anchor={grid['beat_anchor_sample']} samples  sr={grid['sr']}{conf_note}")
+    key_note = ""
+    if "camelot" in grid:
+        key_flag = "  [key low-confidence]" if grid.get("key_low_confidence") else ""
+        key_note = f"  key={grid['camelot']} ({grid['key_name']}){key_flag}"
+    print(f"    BPM={grid['bpm']:.4f}  anchor={grid['beat_anchor_sample']} samples  sr={grid['sr']}{conf_note}{key_note}")
 
     cache[key] = grid
     save_grid_cache(cache)

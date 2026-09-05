@@ -64,6 +64,8 @@ from mixer.curate import curate_and_validate, BillingCapError, ANTHROPIC_URL
 from mixer.set_builder import build_full_set
 from mixer.story import generate_mix_story, generate_story_image, generate_track_intros
 from mixer.voice import generate_track_intro_audio
+from mixer.beatgrid import get_or_analyze
+from make_mix import _harmonic_resort
 
 try:
     import torch
@@ -650,6 +652,53 @@ def _run_job_body(ctx, request_text, minutes, api_key, base_url, model, root_dir
     return
 
 
+def _apply_harmonic_resort(build_tracks, tracks_state, grids):
+    """
+    Reorder build_tracks (the actual mix) and the matching entries in
+    tracks_state (the live job view + eventual gallery tracklist) together,
+    using make_mix.py's _harmonic_resort (2026-09-04, 6 unit tests there
+    cover the swap/tempo-jump-guard/low-confidence-guard behavior — reused
+    here, not reimplemented, so this can never drift from the CLI's
+    behavior). Leaving tracks_state in the old order while reordering only
+    the audio would show a track list that doesn't match what actually
+    plays, which is worse than not re-sorting at all.
+
+    Tracks that failed download never made it into build_tracks/grids —
+    they keep their original tracks_state position, appended after the
+    successfully-built (and now possibly reordered) tracks.
+
+    Extracted 2026-09-05 as its own function so this reorder+rename+
+    reconciliation logic is independently testable, not just the resort
+    itself.
+
+    Returns (build_tracks, tracks_state) — unchanged if no resort happened.
+    """
+    resorted = _harmonic_resort(build_tracks, grids)
+    if [bt["path"] for bt in resorted] == [bt["path"] for bt in build_tracks]:
+        return build_tracks, tracks_state
+
+    print("  Harmonic re-sort: adjusted track order for better key flow")
+    by_name = {ts["name"]: ts for ts in tracks_state}
+    build_tracks = resorted
+    reordered_ts = []
+    for i, bt in enumerate(build_tracks):
+        new_name = f"T{i+1:02d}"
+        ts = by_name[bt["name"]]
+        ts["name"] = new_name
+        bt["name"] = new_name
+        reordered_ts.append(ts)
+    # Renumber failed-download tracks continuing the same sequence (not
+    # left at their original T-number) — otherwise a failed track's
+    # untouched original name can collide with a newly-renamed built track
+    # (e.g. both ending up "T03" if the failed track WAS originally T03
+    # and the resort also produces exactly 3 built tracks before it in the
+    # new order). Confirmed by test_harmonic_resort_wiring.py.
+    failed_ts = [ts for ts in tracks_state if ts["download_status"] != "done"]
+    for j, ts in enumerate(failed_ts):
+        ts["name"] = f"T{len(reordered_ts) + j + 1:02d}"
+    return build_tracks, reordered_ts + failed_ts
+
+
 def _attempt_build(ctx, request_text, slug, validated, root, api_key, base_url, model,
                     replicate_key, elevenlabs_key, attempt):
     """One curate-download-build attempt. Returns True on success (job marked
@@ -702,6 +751,27 @@ def _attempt_build(ctx, request_text, slug, validated, root, api_key, base_url, 
         return
     if len(build_tracks) < len(tracks_state):
         print(f"  Continuing with {len(build_tracks)}/{len(tracks_state)} tracks (some were skipped).")
+
+    # Surface the real detected BPM + Camelot key in the live job view
+    # (2026-09-04, same spirit as make_mix.py's post-download tracklist
+    # print — added for job_runner.py's live UI here). build_full_set
+    # analyzes each track lazily during its own Pass 1, so this doesn't
+    # duplicate work — get_or_analyze caches, so build_full_set just hits
+    # the cache for these same tracks a moment later.
+    print("Analyzing keys...")
+    by_name = {ts["name"]: ts for ts in tracks_state}
+    grids = []
+    for bt in build_tracks:
+        g = get_or_analyze(bt["path"], hint_bpm=bt.get("hint"))
+        grids.append(g)
+        ts = by_name.get(bt["name"])
+        if ts is not None:
+            ts["bpm"] = g.get("bpm", ts["bpm"])
+            ts["camelot"] = g.get("camelot")
+            ts["key_low_confidence"] = g.get("key_low_confidence", False)
+
+    build_tracks, tracks_state = _apply_harmonic_resort(build_tracks, tracks_state, grids)
+    ctx.set(tracks=tracks_state)
 
     _generate_voice_intros(ctx, request_text, build_tracks, api_key, base_url, model,
                             elevenlabs_key, root, slug)
