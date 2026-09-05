@@ -428,7 +428,13 @@ def _publish_to_gallery(ctx, out_path: Path, request_text: str):
         pass
 
     tracklist = [
-        {"name": t.get("name"), "label": t.get("label"), "bpm": t.get("bpm")}
+        {
+            "name": t.get("name"), "label": t.get("label"), "bpm": t.get("bpm"),
+            # Camelot key (2026-09-05) — was already in the live job view
+            # (items 8, 12) but never made it into the PERMANENT published
+            # record until now.
+            "camelot": t.get("camelot"), "key_low_confidence": t.get("key_low_confidence", False),
+        }
         for t in ctx.state.get("tracks", [])
     ]
 
