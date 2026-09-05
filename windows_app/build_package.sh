@@ -17,6 +17,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Pre-flight staleness gate (2026-09-05) — same as mac_app/build_signed_app.sh.
+# Refuses to package a djbot_src that's drifted from source rather than
+# relying on someone remembering to run check_stale.py first.
+if ! python3 "../mac_app/check_stale.py" --target windows; then
+  echo
+  echo "Refusing to package: windows_app/djbot_src is stale (see above). Sync it first."
+  exit 1
+fi
+
 OUT="DJ Kyoko-package.zip"
 OUT_ABS="$(pwd)/$OUT"
 BUILD_DIR="$(mktemp -d)"

@@ -27,6 +27,18 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Pre-flight staleness gate (2026-09-05) — refuses to build against a
+# djbot_src that's drifted from source. This is exactly the failure mode
+# that went unnoticed for weeks until traced by hand 2026-09-04 (djbot_src
+# was dated Aug 19, predating an entire branch's worth of fixes). Building
+# check_stale.py's check directly into the build script means it can never
+# be skipped by forgetting to run it manually first.
+if ! python3 "check_stale.py" --target mac; then
+  echo
+  echo "Refusing to build: mac_app/djbot_src is stale (see above). Sync it first."
+  exit 1
+fi
+
 IDENTITY="Developer ID Application: Coinflash, LLC (Q2VTH3TP6E)"
 NOTARY_PROFILE="djkyoko"
 BUILD_DIR="$(mktemp -d)"
