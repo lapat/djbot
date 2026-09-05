@@ -65,6 +65,7 @@ from mixer.set_builder import build_full_set
 from mixer.story import generate_mix_story, generate_story_image, generate_track_intros
 from mixer.voice import generate_track_intro_audio
 from mixer.beatgrid import get_or_analyze
+from make_mix import _harmonic_resort
 
 try:
     import torch
@@ -712,13 +713,41 @@ def _attempt_build(ctx, request_text, slug, validated, root, api_key, base_url, 
     # the cache for these same tracks a moment later.
     print("Analyzing keys...")
     by_name = {ts["name"]: ts for ts in tracks_state}
+    grids = []
     for bt in build_tracks:
         g = get_or_analyze(bt["path"], hint_bpm=bt.get("hint"))
+        grids.append(g)
         ts = by_name.get(bt["name"])
         if ts is not None:
             ts["bpm"] = g.get("bpm", ts["bpm"])
             ts["camelot"] = g.get("camelot")
             ts["key_low_confidence"] = g.get("key_low_confidence", False)
+
+    # Harmonic re-sort (2026-09-05) — same soft re-sort make_mix.py's
+    # free-text flow uses (item 2, 2026-09-04; 6 unit tests there cover the
+    # swap/tempo-jump-guard/low-confidence-guard behavior). Reused, not
+    # reimplemented, so this can never drift from what make_mix.py does.
+    # Reorder both build_tracks (the actual mix) AND tracks_state (the live
+    # UI + eventual gallery tracklist) together — leaving tracks_state in
+    # the old order would show a track list that doesn't match what the
+    # audio actually plays, which is worse than not re-sorting at all.
+    # Tracks that failed download never made it into build_tracks/grids —
+    # they keep their original position, appended after the built tracks.
+    resorted = _harmonic_resort(build_tracks, grids)
+    if [bt["path"] for bt in resorted] != [bt["path"] for bt in build_tracks]:
+        print("  Harmonic re-sort: adjusted track order for better key flow")
+        original_names = [bt["name"] for bt in build_tracks]
+        build_tracks = resorted
+        reordered_ts = []
+        for i, bt in enumerate(build_tracks):
+            new_name = f"T{i+1:02d}"
+            ts = by_name[bt["name"]]
+            ts["name"] = new_name
+            bt["name"] = new_name
+            reordered_ts.append(ts)
+        failed_ts = [ts for ts in tracks_state if ts["download_status"] != "done"]
+        tracks_state = reordered_ts + failed_ts
+
     ctx.set(tracks=tracks_state)
 
     _generate_voice_intros(ctx, request_text, build_tracks, api_key, base_url, model,
