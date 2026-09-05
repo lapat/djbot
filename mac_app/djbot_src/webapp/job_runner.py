@@ -652,6 +652,53 @@ def _run_job_body(ctx, request_text, minutes, api_key, base_url, model, root_dir
     return
 
 
+def _apply_harmonic_resort(build_tracks, tracks_state, grids):
+    """
+    Reorder build_tracks (the actual mix) and the matching entries in
+    tracks_state (the live job view + eventual gallery tracklist) together,
+    using make_mix.py's _harmonic_resort (2026-09-04, 6 unit tests there
+    cover the swap/tempo-jump-guard/low-confidence-guard behavior — reused
+    here, not reimplemented, so this can never drift from the CLI's
+    behavior). Leaving tracks_state in the old order while reordering only
+    the audio would show a track list that doesn't match what actually
+    plays, which is worse than not re-sorting at all.
+
+    Tracks that failed download never made it into build_tracks/grids —
+    they keep their original tracks_state position, appended after the
+    successfully-built (and now possibly reordered) tracks.
+
+    Extracted 2026-09-05 as its own function so this reorder+rename+
+    reconciliation logic is independently testable, not just the resort
+    itself.
+
+    Returns (build_tracks, tracks_state) — unchanged if no resort happened.
+    """
+    resorted = _harmonic_resort(build_tracks, grids)
+    if [bt["path"] for bt in resorted] == [bt["path"] for bt in build_tracks]:
+        return build_tracks, tracks_state
+
+    print("  Harmonic re-sort: adjusted track order for better key flow")
+    by_name = {ts["name"]: ts for ts in tracks_state}
+    build_tracks = resorted
+    reordered_ts = []
+    for i, bt in enumerate(build_tracks):
+        new_name = f"T{i+1:02d}"
+        ts = by_name[bt["name"]]
+        ts["name"] = new_name
+        bt["name"] = new_name
+        reordered_ts.append(ts)
+    # Renumber failed-download tracks continuing the same sequence (not
+    # left at their original T-number) — otherwise a failed track's
+    # untouched original name can collide with a newly-renamed built track
+    # (e.g. both ending up "T03" if the failed track WAS originally T03
+    # and the resort also produces exactly 3 built tracks before it in the
+    # new order). Confirmed by test_harmonic_resort_wiring.py.
+    failed_ts = [ts for ts in tracks_state if ts["download_status"] != "done"]
+    for j, ts in enumerate(failed_ts):
+        ts["name"] = f"T{len(reordered_ts) + j + 1:02d}"
+    return build_tracks, reordered_ts + failed_ts
+
+
 def _attempt_build(ctx, request_text, slug, validated, root, api_key, base_url, model,
                     replicate_key, elevenlabs_key, attempt):
     """One curate-download-build attempt. Returns True on success (job marked
@@ -723,31 +770,7 @@ def _attempt_build(ctx, request_text, slug, validated, root, api_key, base_url, 
             ts["camelot"] = g.get("camelot")
             ts["key_low_confidence"] = g.get("key_low_confidence", False)
 
-    # Harmonic re-sort (2026-09-05) — same soft re-sort make_mix.py's
-    # free-text flow uses (item 2, 2026-09-04; 6 unit tests there cover the
-    # swap/tempo-jump-guard/low-confidence-guard behavior). Reused, not
-    # reimplemented, so this can never drift from what make_mix.py does.
-    # Reorder both build_tracks (the actual mix) AND tracks_state (the live
-    # UI + eventual gallery tracklist) together — leaving tracks_state in
-    # the old order would show a track list that doesn't match what the
-    # audio actually plays, which is worse than not re-sorting at all.
-    # Tracks that failed download never made it into build_tracks/grids —
-    # they keep their original position, appended after the built tracks.
-    resorted = _harmonic_resort(build_tracks, grids)
-    if [bt["path"] for bt in resorted] != [bt["path"] for bt in build_tracks]:
-        print("  Harmonic re-sort: adjusted track order for better key flow")
-        original_names = [bt["name"] for bt in build_tracks]
-        build_tracks = resorted
-        reordered_ts = []
-        for i, bt in enumerate(build_tracks):
-            new_name = f"T{i+1:02d}"
-            ts = by_name[bt["name"]]
-            ts["name"] = new_name
-            bt["name"] = new_name
-            reordered_ts.append(ts)
-        failed_ts = [ts for ts in tracks_state if ts["download_status"] != "done"]
-        tracks_state = reordered_ts + failed_ts
-
+    build_tracks, tracks_state = _apply_harmonic_resort(build_tracks, tracks_state, grids)
     ctx.set(tracks=tracks_state)
 
     _generate_voice_intros(ctx, request_text, build_tracks, api_key, base_url, model,
