@@ -20,7 +20,7 @@ PORT=8934
 
 # Bump this — and MAC_APP_VERSION in djbot-gallery/app.py — every time a new
 # signed build ships via mac_app/build_signed_app.sh.
-LOCAL_APP_VERSION="2026-08-19-outrobars-fix-v1"
+LOCAL_APP_VERSION="2026-09-05-harmonic-and-hardcut-fix-v1"
 GALLERY_URL="https://djbot-gallery-production.up.railway.app"
 
 # ── Auto-update ────────────────────────────────────────────────────────────
