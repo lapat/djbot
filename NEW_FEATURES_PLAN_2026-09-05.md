@@ -65,6 +65,36 @@ new items. Same safety rules as yesterday.
    works there now. Makes it a normal git-tracked project instead of a
    permanent special case for every future gallery change.
 
+## Round 2 backlog (same day, continued session)
+
+Items 1-8 above are resolved: 6 shipped (2,3,4,5,6,8), item 7 deliberately
+declined (see below — no safe way to validate a hard-cut audio change by
+ear), item 1 blocked on a Playwright tooling hang (3 attempts, all hung
+120s+ including a bare resize with no page loaded — not retried further
+per the "don't hammer a failing tool" rule).
+
+9. **Retry item 1 once**, now that time has passed — a real mobile-viewport
+   check of the webapp job view. If Playwright hangs again, stop and flag
+   it as a real environment issue rather than retrying further.
+10. **Safe alternative to the declined item 7**: instead of changing hard-cut
+    audio processing (unvalidatable without listening), extend the item-7
+    cue-sheet tier annotation to flag when a transition's own amplitude-
+    continuity check failed — read-only visibility into a known issue,
+    zero audio risk, same spirit as the rest of item 7.
+11. **Extend `check_stale.py` to also cover `windows_app/djbot_src/`** —
+    the Mac app just got fixed; the Windows copy has had zero attention
+    and is presumably in the same stale state.
+12. **Wire the harmonic re-sort into `webapp/job_runner.py`** (not just
+    surfacing the key, per item 8's explicit descope) — now that
+    make_mix.py's `_harmonic_resort` is proven (6 tests, shipped, no
+    incidents), apply the same soft re-sort to the webapp's Surprise Me
+    flow. Import and reuse make_mix.py's function; don't reimplement.
+13. **djbot-gallery**: add a minimal smoke test (`python -m py_compile
+    app.py` + a lightweight import/route-count check) now that it's a real
+    repo — closes the "no test suite here" gap for future changes.
+14. If time remains: small polish pass — anything else `check_stale.py` or
+    a fresh look at the codebase turns up.
+
 ## Safety rules (same as yesterday)
 
 - One backlog item per 5-minute pass, smallest safe increment.
