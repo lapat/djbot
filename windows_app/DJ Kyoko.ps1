@@ -12,7 +12,7 @@ Write-Host ""
 
 # Bump this — and WINDOWS_APP_VERSION in djbot-gallery/app.py — every time a
 # new build ships.
-$LocalAppVersion = "2026-08-19-outrobars-fix-v1"
+$LocalAppVersion = "2026-09-05-harmonic-and-hardcut-fix-v1"
 $GalleryUrl = "https://djbot-gallery-production.up.railway.app"
 
 # ── Auto-update ──────────────────────────────────────────────────────────
