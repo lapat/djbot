@@ -75,6 +75,28 @@ def _onset_regularity_ok(blend_audio, sr):
 # even bridging isn't musically sensible and the transition still hard-fails.
 MAX_BRIDGE_DIFF_PCT = 35.0
 
+# Within the bridge range, the far end forces the most aggressive time-stretch
+# to lock a beat-matched blend (e.g. a 30%+ gap) — almost certainly the most
+# audible pitch/tempo artifact in the whole tier system (see CLAUDE.md's HARD
+# RULE, 2026-08-19: beat-matching correctness is the priority, and a forced-
+# but-wrong-sounding stretch is worse than admitting the beats won't lock).
+# Above this threshold, fall back to a plain crossfade at each track's own
+# native tempo — no forced stretch, no beat lock attempted — same philosophy
+# as the hard-cut fallback below, applied one tier earlier, with a softer
+# landing (crossfade, not echo+splice) since tracks in this sub-range are
+# still close enough that an unmatched crossfade doesn't clash the way a
+# >MAX_BRIDGE_DIFF_PCT hard cut would.
+#
+# Scoped 2026-08-28 (SCOPING_2026-08-28.md), built 2026-08-28. Conservative
+# default: biased toward keeping the existing bridged-beatmatch behavior for
+# the lower half of the bridge range (8-20%); only the upper half (20-35%)
+# gets the new crossfade fallback. NOT YET VALIDATED BY EAR against real
+# material in this diff_pct range — CLAUDE.md is explicit that a passing gate
+# (or, here, the absence of one) isn't proof of a good-sounding transition.
+# Retune this threshold (or revert to always-bridge) if a real transition in
+# the 20-35% range is listened to and sounds wrong either way.
+SOFT_CROSSFADE_THRESHOLD_PCT = 20.0
+
 # v2: per-band EQ crossfade (Pioneer DJM-800 style).
 # True  → bass swaps at 50 % of blend, highs+mids use equal-power.
 # False → original uniform equal-power throughout (v1 behaviour).
@@ -402,6 +424,77 @@ def _build_hard_cut_transition(track_a, track_b, out_dir, outro_bars, bpm_a, bpm
     }
 
 
+def _build_soft_crossfade_transition(track_a, track_b, out_dir, outro_bars, cf_bars,
+                                      bpm_a, bpm_b, period_a, period_b, anchor_a):
+    """
+    For pairs in the upper part of the "bridge" range (SOFT_CROSSFADE_THRESHOLD_PCT
+    < diff_pct <= MAX_BRIDGE_DIFF_PCT): too far apart to force a clean-sounding
+    beat-matched blend, but close enough that a full hard-cut+echo feels overly
+    abrupt. Plain crossfade (EQ-band if USE_EQ_BLEND, else equal-power) at each
+    track's own native tempo — no time-stretch of A, no forced beat lock
+    attempted. Same outro/cue-point logic as _build_hard_cut_transition; only
+    the blend content differs (a real crossfade instead of an echo-out +
+    immediate B headstart).
+
+    Deliberately reuses the "hard_cut": True contract: build_full_set's Pass 1
+    loop treats hard_cut as a one-shot build with no mix_in retries and no
+    phase gate — exactly what this also needs, since there's no beat lock to
+    measure or retry against (see the "hard_cut" comment inline in Pass 1).
+    "soft_crossfade": True is for logging/reporting only. Pass 2 (assembly) is
+    fully agnostic to hard_cut vs. this — it only reads cf_len/trim/blend/
+    samples generically — so no assembly changes were needed to add this tier.
+    """
+    seg_a = AudioSegment.from_file(track_a["path"]).set_channels(2)
+    seg_b = AudioSegment.from_file(track_b["path"]).set_channels(2)
+    samples_a, sr = _seg_to_f32(seg_a)
+    samples_b, _  = _seg_to_f32(seg_b)
+
+    effective_outro_bars = _safe_outro_bars(
+        track_a.get("outro_bars", outro_bars), period_a, len(samples_a))
+    cf_len = int(round(cf_bars * 4 * period_a))
+    outro_target = len(samples_a) - effective_outro_bars * 4 * period_a
+    outro_sample = int(round(snap_to_beat(outro_target, anchor_a, period_a)))
+    # Clamp so the forward-reading crossfade zone below always fits — unlike
+    # the hard-cut's outro clamp (which reads BACKWARD from outro_sample for
+    # the echo tail), this reads FORWARD, so it needs the same "- cf_len"
+    # headroom build_one_transition's own outro clamp uses.
+    outro_sample = max(0, min(outro_sample, len(samples_a) - cf_len))
+
+    cue = find_cue_point(seg_b)
+    b_full = samples_b[cue:]
+
+    za = samples_a[outro_sample: outro_sample + cf_len]
+    zb = b_full[:cf_len]
+    n = min(len(za), len(zb))
+    za, zb = za[:n], zb[:n]
+
+    diff_pct = abs(bpm_a - bpm_b) / bpm_a * 100
+    tag = f"{track_a['name']}_into_{track_b['name']}"
+    print(f"    [soft-crossfade] {diff_pct:.1f}% gap — too far to bridge cleanly; "
+          f"crossfading at native tempo, no forced stretch")
+
+    if USE_EQ_BLEND:
+        blend = _eq_blend(za, zb, n, sr)
+    else:
+        blend = np.clip(
+            za * _equal_power(n, fade_in=False)[:, np.newaxis] +
+            zb * _equal_power(n, fade_in=True)[:, np.newaxis],
+            -1.0, 1.0,
+        )
+    b_full = b_full[n:]
+
+    return {
+        "tag": tag, "bpm_a": bpm_a, "bpm_b": bpm_b, "phase_err_ms": None,
+        "shipped_phase_err_ms": None, "onset_ok": True,
+        "samples_a": samples_a, "samples_b_s": samples_b, "outro_sample": outro_sample,
+        "cf_len": n, "trim": cue, "blend": blend, "b_full": b_full, "sr": sr,
+        "period_a": period_a, "cue_b": int(cue), "stretch_ratio": 1.0,
+        "anchor_b_s": float(anchor_a),  # unused here; kept for key compat
+        "bridged": False, "native_period_a": period_a, "native_period_b": period_b,
+        "hard_cut": True, "soft_crossfade": True,
+    }
+
+
 def build_one_transition(track_a, track_b, out_dir, cf_bars, outro_bars, max_bpm_diff_pct=8.0):
     """Beat-align A→B, measure phase error, return metrics + audio arrays."""
     grid_a = get_or_analyze(track_a["path"], hint_bpm=track_a["hint"])
@@ -449,6 +542,10 @@ def build_one_transition(track_a, track_b, out_dir, cf_bars, outro_bars, max_bpm
     if diff_pct > MAX_BRIDGE_DIFF_PCT:
         return _build_hard_cut_transition(track_a, track_b, out_dir, outro_bars,
                                            bpm_a, bpm_b, period_a, period_b, anchor_a)
+    if diff_pct > SOFT_CROSSFADE_THRESHOLD_PCT:
+        return _build_soft_crossfade_transition(track_a, track_b, out_dir, outro_bars,
+                                                 cf_bars, bpm_a, bpm_b, period_a, period_b,
+                                                 anchor_a)
     bridged = diff_pct > max_bpm_diff_pct
 
     seg_a = AudioSegment.from_file(track_a["path"]).set_channels(2)
@@ -842,7 +939,10 @@ def build_full_set(brain):
             print(f"       mix_in={mix_in}: {phase_ms}ms{ship_note}{onset_note} — retrying...")
 
         if tr.get("hard_cut"):
-            print(f"       Hard cut (tempos too far apart to blend) ✂")
+            if tr.get("soft_crossfade"):
+                print(f"       Soft crossfade (too far to beat-match, close enough to blend) ≈")
+            else:
+                print(f"       Hard cut (tempos too far apart to blend) ✂")
         else:
             gate_passed = (phase_ms is not None and phase_ms < PHASE_THRESHOLD_MS and
                            (shipped_ms is None or shipped_ms < PHASE_THRESHOLD_MS) and
@@ -1023,7 +1123,23 @@ def build_full_set(brain):
             if body_end < outro_stretched:
                 body_period   = tr_prev["period_a"]
                 native_period = tr_next["period_a"]
-                if abs(body_period / native_period - 1.0) > 0.001:
+                # Hard cuts (and soft-crossfades, which reuse the hard_cut
+                # contract) never beat-match, so there is nothing on either
+                # side for this body to ramp toward. tr_prev["period_a"] also
+                # isn't even this body's own tempo when tr_prev is a hard
+                # cut — hard cuts never stretch B, so the body plays at its
+                # own native BPM, not the previous track's period_a. Ramping
+                # toward it was both pointless and wrong (confirmed live
+                # 2026-09-04: cross-sr-rate hard-cut set computed a bogus
+                # 132.8 BPM ramp target — no track in the set was near that
+                # tempo — traced to reusing a period_a sample count computed
+                # at one track's native sample rate as if it were in the
+                # mix's working sample rate). Skip ramping entirely whenever
+                # either adjacent transition is a hard cut/soft-crossfade.
+                do_ramp = (abs(body_period / native_period - 1.0) > 0.001
+                           and not tr_prev.get("hard_cut")
+                           and not tr_next.get("hard_cut"))
+                if do_ramp:
                     # BPM mismatch in capped reblend — fix it.
                     cue_b_prev      = tr_prev["cue_b"]
                     ratio_prev      = tr_prev["stretch_ratio"]
@@ -1068,7 +1184,9 @@ def build_full_set(brain):
             # bars. Applied to ALL non-capped bodies (RAMP_THRESHOLD=0.0). When BPMs match
             # exactly (ratio=1.0), the inner guard in _bpm_ramp skips all pyrubberband calls.
             # Capped bodies with BPM mismatch are handled above; same-BPM capped skip ramp.
-            if not capped:
+            # Same hard-cut/soft-crossfade guard as the capped-ramp branch above —
+            # no beat-matching on either side means no target tempo to ramp toward.
+            if not capped and not tr_prev.get("hard_cut") and not tr_next.get("hard_cut"):
                 ramp_ratio = tr_next["period_a"] / tr_prev["period_a"]
                 if abs(ramp_ratio - 1.0) > RAMP_THRESHOLD:
                     bpm_from = sr * 60 / tr_prev["period_a"]
@@ -1223,6 +1341,27 @@ def build_full_set(brain):
         s = int(samples / sr)
         return f"{s // 60:02d}:{s % 60:02d}"
 
+    def _tier_note(tr):
+        """
+        One-line "why this transition sounds the way it does" for the cue
+        sheet (2026-09-04) — reads the same tr["hard_cut"]/["bridged"]/
+        ["soft_crossfade"]/["phase_err_ms"] fields set by
+        build_one_transition/_build_hard_cut_transition/
+        _build_soft_crossfade_transition. Read-only annotation of an
+        already-built transition — does not affect how any transition is
+        built.
+        """
+        if tr.get("hard_cut"):
+            if tr.get("soft_crossfade"):
+                return "soft crossfade — too far to beat-match, close enough to blend cleanly"
+            return "hard cut — tempos too far apart (or beat data unreliable) to blend"
+        if tr.get("bridged"):
+            return "bridged beat-match — forced tempo bridge past normal tolerance"
+        phase = tr.get("phase_err_ms")
+        if phase is not None:
+            return f"beat-matched blend — phase error {phase:.1f}ms"
+        return "beat-matched blend"
+
     cf_dur_s = round(snippet_clips[0]["blend_end"] - snippet_clips[0]["blend_start"]) / sr if snippet_clips else 0
     first_label = tracks[0].get("label", tracks[0]["name"])
     cue_lines = [
@@ -1238,6 +1377,8 @@ def build_full_set(brain):
         n = clip["idx"]
         suffix = "  ← PEAK" if label in ("Rampa - The Touch",) else ("  ← close" if "Stimming" in label else "")
         cue_lines.append(f"  {bs}–{be}  [{n:02d}] → {label}{suffix}")
+        if 0 <= n - 1 < len(transitions):
+            cue_lines.append(f"               {_tier_note(transitions[n - 1]['tr'])}")
 
     set_end_s = int(len(mix_audio) / sr)
     cue_lines.append(f"  {set_end_s // 60:02d}:{set_end_s % 60:02d}         Set ends")
