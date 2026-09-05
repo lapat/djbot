@@ -108,3 +108,35 @@ per the "don't hammer a failing tool" rule).
   no test suite — verify with syntax checks + code review there, same as
   yesterday, unless item 3 confirms deploy access, in which case a live
   `/health`/`/api/app-version` check after deploy is the real proof.
+
+## Round 3 backlog (same day, third session)
+
+Rounds 1-2 (items 1-13) resolved: 11 shipped, 1 deliberately declined
+(hard-cut audio fix — no way to validate by ear), 1 blocked (Playwright
+hang, filed as feedback). windows_app/djbot_src has been flagged stale
+twice now (items 11, and originally noted in round 1) without ever
+actually being fixed — that's the centerpiece of this round: bring
+Windows to the same parity Mac got in round 1's item 4.
+
+15. **Unit-test job_runner.py's harmonic-resort wiring** (item 12's real
+    gap — make_mix.py's _harmonic_resort has 6 tests, but the reorder +
+    rename + tracks_state-reconciliation logic added directly in
+    job_runner.py has none). Extract the reorder/rename block into a
+    small testable helper if that's cleaner than testing it in place.
+16. **Sync windows_app/djbot_src/** fully — `check_stale.py --target
+    windows` should go from stale to 0 differ / 0 missing.
+17. **Create `windows_app/build_package.sh`** — a zip-packaging script
+    mirroring `mac_app/build_signed_app.sh`'s file selection (excludes
+    downloads/output, keeps the flat root-files + djbot_src/ structure
+    confirmed from the existing "DJ Kyoko Windows.zip", including
+    `webapp/.shared_key` — deliberately bundled, it's a spend-capped
+    proxy relay token, not a raw API key, same as the Mac build).
+    No code-signing needed for Windows (unlike Mac's notarization) —
+    keep this simple.
+18. **Run it, deploy to djbot-gallery**: copy the new zip to
+    `static/downloads/DJ Kyoko Windows.zip`, bump `WINDOWS_APP_VERSION`
+    in app.py and the `$LocalAppVersion` in `windows_app/DJ Kyoko.ps1`,
+    `railway up`, verify `/api/app-version` live reflects the new
+    windows_version — the same proof standard as the Mac rebuild.
+19. If time remains: polish, or a fresh look at what check_stale.py /
+    the codebase turns up.
